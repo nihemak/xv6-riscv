@@ -132,7 +132,7 @@ int getcmd(char *buf, int nbuf) {
 }
 
 int main(void) {
-  static char buf[100];
+  static char input[100];
   int fd;
 
   // Ensure that three file descriptors are open.
@@ -144,14 +144,15 @@ int main(void) {
   }
 
   // Read and run input commands.
-  while (getcmd(buf, sizeof(buf)) >= 0) {
-    if (buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' ') {
+  while (getcmd(input, sizeof(input)) >= 0) {
+    if (input[0] == 'c' && input[1] == 'd' && input[2] == ' ') {
       // Chdir must be called by the parent, not the child.
-      buf[strlen(buf) - 1] = 0;  // chop \n
-      if (chdir(buf + 3) < 0) fprintf(2, "cannot cd %s\n", buf + 3);
+      char *dir = input + 3;
+      dir[strlen(dir) - 1] = 0;  // chop \n
+      if (chdir(dir) < 0) fprintf(2, "cannot cd %s\n", dir);
       continue;
     }
-    if (fork1() == 0) runcmd(parsecmd(buf));
+    if (fork1() == 0) runcmd(parsecmd(input));
     wait(0);
   }
   exit(0);
