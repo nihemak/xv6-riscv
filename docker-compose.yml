@@ -1,0 +1,8 @@
+version: "3.8"
+services:
+  xv6:
+    build: .
+    container_name: xv6
+    volumes:
+      - .:/xv6
+    working_dir: /xv6
