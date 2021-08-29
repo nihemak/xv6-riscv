@@ -1,3 +1,5 @@
+#include "kernel/types.h"
+
 struct rtcdate {
   uint second;
   uint minute;
