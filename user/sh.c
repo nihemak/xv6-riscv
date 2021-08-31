@@ -53,74 +53,94 @@ int fork1(void);  // Fork but panics on failure.
 void panic(char *);
 struct cmd *parse_cmd(char *);
 
+void run_exec_cmd(struct cmd *);
+void run_redirect_cmd(struct cmd *);
+void run_list_cmd(struct cmd *);
+void run_pipe_cmd(struct cmd *);
+void run_back_cmd(struct cmd *);
+
 // Execute cmd.  Never returns.
 void run_cmd(struct cmd *cmd) {
-  int p[2];
-  struct back_cmd *bcmd;
-  struct exec_cmd *ecmd;
-  struct list_cmd *lcmd;
-  struct pipe_cmd *pcmd;
-  struct redirect_cmd *rcmd;
-
   if (cmd == 0) exit(1);
 
   switch (cmd->type) {
+    case CMD_TYPE_EXEC:
+      run_exec_cmd(cmd);
+      break;
+    case CMD_TYPE_REDIRECT:
+      run_redirect_cmd(cmd);
+      break;
+    case CMD_TYPE_LIST:
+      run_list_cmd(cmd);
+      break;
+    case CMD_TYPE_PIPE:
+      run_pipe_cmd(cmd);
+      break;
+    case CMD_TYPE_BACK:
+      run_back_cmd(cmd);
+      break;
     default:
       panic("runcmd");
-
-    case CMD_TYPE_EXEC:
-      ecmd = (struct exec_cmd *)cmd;
-      if (ecmd->argv[0] == 0) exit(1);
-      exec(ecmd->argv[0], ecmd->argv);
-      fprintf(2, "exec %s failed\n", ecmd->argv[0]);
-      break;
-
-    case CMD_TYPE_REDIRECT:
-      rcmd = (struct redirect_cmd *)cmd;
-      close(rcmd->fd);
-      if (open(rcmd->file, rcmd->mode) < 0) {
-        fprintf(2, "open %s failed\n", rcmd->file);
-        exit(1);
-      }
-      run_cmd(rcmd->cmd);
-      break;
-
-    case CMD_TYPE_LIST:
-      lcmd = (struct list_cmd *)cmd;
-      if (fork1() == 0) run_cmd(lcmd->left);
-      wait(0);
-      run_cmd(lcmd->right);
-      break;
-
-    case CMD_TYPE_PIPE:
-      pcmd = (struct pipe_cmd *)cmd;
-      if (pipe(p) < 0) panic("pipe");
-      if (fork1() == 0) {
-        close(1);
-        dup(p[1]);
-        close(p[0]);
-        close(p[1]);
-        run_cmd(pcmd->left);
-      }
-      if (fork1() == 0) {
-        close(0);
-        dup(p[0]);
-        close(p[0]);
-        close(p[1]);
-        run_cmd(pcmd->right);
-      }
-      close(p[0]);
-      close(p[1]);
-      wait(0);
-      wait(0);
-      break;
-
-    case CMD_TYPE_BACK:
-      bcmd = (struct back_cmd *)cmd;
-      if (fork1() == 0) run_cmd(bcmd->cmd);
-      break;
   }
   exit(0);
+}
+
+void run_exec_cmd(struct cmd *cmd) {
+  struct exec_cmd *ecmd;
+  ecmd = (struct exec_cmd *)cmd;
+  if (ecmd->argv[0] == 0) exit(1);
+  exec(ecmd->argv[0], ecmd->argv);
+  fprintf(2, "exec %s failed\n", ecmd->argv[0]);
+}
+
+void run_redirect_cmd(struct cmd *cmd) {
+  struct redirect_cmd *rcmd;
+  rcmd = (struct redirect_cmd *)cmd;
+  close(rcmd->fd);
+  if (open(rcmd->file, rcmd->mode) < 0) {
+    fprintf(2, "open %s failed\n", rcmd->file);
+    exit(1);
+  }
+  run_cmd(rcmd->cmd);
+}
+
+void run_list_cmd(struct cmd *cmd) {
+  struct list_cmd *lcmd;
+  lcmd = (struct list_cmd *)cmd;
+  if (fork1() == 0) run_cmd(lcmd->left);
+  wait(0);
+  run_cmd(lcmd->right);
+}
+
+void run_pipe_cmd(struct cmd *cmd) {
+  int p[2];
+  struct pipe_cmd *pcmd;
+  pcmd = (struct pipe_cmd *)cmd;
+  if (pipe(p) < 0) panic("pipe");
+  if (fork1() == 0) {
+    close(1);
+    dup(p[1]);
+    close(p[0]);
+    close(p[1]);
+    run_cmd(pcmd->left);
+  }
+  if (fork1() == 0) {
+    close(0);
+    dup(p[0]);
+    close(p[0]);
+    close(p[1]);
+    run_cmd(pcmd->right);
+  }
+  close(p[0]);
+  close(p[1]);
+  wait(0);
+  wait(0);
+}
+
+void run_back_cmd(struct cmd *cmd) {
+  struct back_cmd *bcmd;
+  bcmd = (struct back_cmd *)cmd;
+  if (fork1() == 0) run_cmd(bcmd->cmd);
 }
 
 int get_cmd(char *buf, int nbuf) {
