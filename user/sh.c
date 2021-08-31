@@ -9,7 +9,7 @@
 #define CMD_TYPE_REDIRECT 2
 #define CMD_TYPE_PIPE 3
 #define CMD_TYPE_LIST 4
-#define CMD_TYPE_BACK 5
+#define CMD_TYPE_BACKGROUND 5
 
 #define MAXARGS 10
 
@@ -44,7 +44,7 @@ struct list_cmd {
   struct cmd *right;
 };
 
-struct back_cmd {
+struct background_cmd {
   int type;
   struct cmd *cmd;
 };
@@ -57,7 +57,7 @@ void run_exec_cmd(struct cmd *);
 void run_redirect_cmd(struct cmd *);
 void run_list_cmd(struct cmd *);
 void run_pipe_cmd(struct cmd *);
-void run_back_cmd(struct cmd *);
+void run_background_cmd(struct cmd *);
 
 // Execute cmd.  Never returns.
 void run_cmd(struct cmd *cmd) {
@@ -76,8 +76,8 @@ void run_cmd(struct cmd *cmd) {
     case CMD_TYPE_PIPE:
       run_pipe_cmd(cmd);
       break;
-    case CMD_TYPE_BACK:
-      run_back_cmd(cmd);
+    case CMD_TYPE_BACKGROUND:
+      run_background_cmd(cmd);
       break;
     default:
       panic("runcmd");
@@ -137,9 +137,9 @@ void run_pipe_cmd(struct cmd *cmd) {
   wait(0);
 }
 
-void run_back_cmd(struct cmd *cmd) {
-  struct back_cmd *bcmd;
-  bcmd = (struct back_cmd *)cmd;
+void run_background_cmd(struct cmd *cmd) {
+  struct background_cmd *bcmd;
+  bcmd = (struct background_cmd *)cmd;
   if (fork1() == 0) run_cmd(bcmd->cmd);
 }
 
@@ -240,12 +240,12 @@ struct cmd *list_cmd(struct cmd *left, struct cmd *right) {
   return (struct cmd *)cmd;
 }
 
-struct cmd *back_cmd(struct cmd *subcmd) {
-  struct back_cmd *cmd;
+struct cmd *background_cmd(struct cmd *subcmd) {
+  struct background_cmd *cmd;
 
   cmd = malloc(sizeof(*cmd));
   memset(cmd, 0, sizeof(*cmd));
-  cmd->type = CMD_TYPE_BACK;
+  cmd->type = CMD_TYPE_BACKGROUND;
   cmd->cmd = subcmd;
   return (struct cmd *)cmd;
 }
@@ -328,7 +328,7 @@ struct cmd *parse_line(char **ps, char *es) {
   cmd = parse_pipe(ps, es);
   while (peek(ps, es, "&")) {
     get_token(ps, es, 0, 0);
-    cmd = back_cmd(cmd);
+    cmd = background_cmd(cmd);
   }
   if (peek(ps, es, ";")) {
     get_token(ps, es, 0, 0);
@@ -413,7 +413,7 @@ struct cmd *parse_exec(char **ps, char *es) {
 // NUL-terminate all the counted strings.
 struct cmd *nul_terminate(struct cmd *cmd) {
   int i;
-  struct back_cmd *bcmd;
+  struct background_cmd *bcmd;
   struct exec_cmd *ecmd;
   struct list_cmd *lcmd;
   struct pipe_cmd *pcmd;
@@ -445,8 +445,8 @@ struct cmd *nul_terminate(struct cmd *cmd) {
       nul_terminate(lcmd->right);
       break;
 
-    case CMD_TYPE_BACK:
-      bcmd = (struct back_cmd *)cmd;
+    case CMD_TYPE_BACKGROUND:
+      bcmd = (struct background_cmd *)cmd;
       nul_terminate(bcmd->cmd);
       break;
   }
