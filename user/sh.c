@@ -18,13 +18,13 @@ struct cmd {
 };
 
 struct exec_cmd {
-  int type;
+  struct cmd parent;
   char *argv[MAXARGS];
   char *eargv[MAXARGS];
 };
 
 struct redirect_cmd {
-  int type;
+  struct cmd parent;
   struct cmd *cmd;
   char *file;
   char *efile;
@@ -33,19 +33,19 @@ struct redirect_cmd {
 };
 
 struct pipe_cmd {
-  int type;
+  struct cmd parent;
   struct cmd *left;
   struct cmd *right;
 };
 
 struct list_cmd {
-  int type;
+  struct cmd parent;
   struct cmd *left;
   struct cmd *right;
 };
 
 struct background_cmd {
-  int type;
+  struct cmd parent;
   struct cmd *cmd;
 };
 
@@ -199,7 +199,7 @@ struct cmd *exec_cmd(void) {
 
   cmd = malloc(sizeof(*cmd));
   memset(cmd, 0, sizeof(*cmd));
-  cmd->type = CMD_TYPE_EXEC;
+  ((struct cmd *)cmd)->type = CMD_TYPE_EXEC;
   return (struct cmd *)cmd;
 }
 
@@ -209,7 +209,7 @@ struct cmd *redirect_cmd(struct cmd *subcmd, char *file, char *efile, int mode,
 
   cmd = malloc(sizeof(*cmd));
   memset(cmd, 0, sizeof(*cmd));
-  cmd->type = CMD_TYPE_REDIRECT;
+  ((struct cmd *)cmd)->type = CMD_TYPE_REDIRECT;
   cmd->cmd = subcmd;
   cmd->file = file;
   cmd->efile = efile;
@@ -223,7 +223,7 @@ struct cmd *pipe_cmd(struct cmd *left, struct cmd *right) {
 
   cmd = malloc(sizeof(*cmd));
   memset(cmd, 0, sizeof(*cmd));
-  cmd->type = CMD_TYPE_PIPE;
+  ((struct cmd *)cmd)->type = CMD_TYPE_PIPE;
   cmd->left = left;
   cmd->right = right;
   return (struct cmd *)cmd;
@@ -234,7 +234,7 @@ struct cmd *list_cmd(struct cmd *left, struct cmd *right) {
 
   cmd = malloc(sizeof(*cmd));
   memset(cmd, 0, sizeof(*cmd));
-  cmd->type = CMD_TYPE_LIST;
+  ((struct cmd *)cmd)->type = CMD_TYPE_LIST;
   cmd->left = left;
   cmd->right = right;
   return (struct cmd *)cmd;
@@ -245,7 +245,7 @@ struct cmd *background_cmd(struct cmd *subcmd) {
 
   cmd = malloc(sizeof(*cmd));
   memset(cmd, 0, sizeof(*cmd));
-  cmd->type = CMD_TYPE_BACKGROUND;
+  ((struct cmd *)cmd)->type = CMD_TYPE_BACKGROUND;
   cmd->cmd = subcmd;
   return (struct cmd *)cmd;
 }
@@ -410,45 +410,71 @@ struct cmd *parse_exec(char **ps, char *es) {
   return ret;
 }
 
+struct cmd *nul_terminate_exec_cmd(struct cmd *);
+struct cmd *nul_terminate_redirect_cmd(struct cmd *);
+struct cmd *nul_terminate_pipe_cmd(struct cmd *);
+struct cmd *nul_terminate_list_cmd(struct cmd *);
+struct cmd *nul_terminate_background_cmd(struct cmd *);
+
 // NUL-terminate all the counted strings.
 struct cmd *nul_terminate(struct cmd *cmd) {
-  int i;
-  struct background_cmd *bcmd;
-  struct exec_cmd *ecmd;
-  struct list_cmd *lcmd;
-  struct pipe_cmd *pcmd;
-  struct redirect_cmd *rcmd;
-
   if (cmd == 0) return 0;
 
   switch (cmd->type) {
     case CMD_TYPE_EXEC:
-      ecmd = (struct exec_cmd *)cmd;
-      for (i = 0; ecmd->argv[i]; i++) *ecmd->eargv[i] = 0;
+      cmd = nul_terminate_exec_cmd(cmd);
       break;
-
     case CMD_TYPE_REDIRECT:
-      rcmd = (struct redirect_cmd *)cmd;
-      nul_terminate(rcmd->cmd);
-      *rcmd->efile = 0;
+      cmd = nul_terminate_redirect_cmd(cmd);
       break;
-
     case CMD_TYPE_PIPE:
-      pcmd = (struct pipe_cmd *)cmd;
-      nul_terminate(pcmd->left);
-      nul_terminate(pcmd->right);
+      cmd = nul_terminate_pipe_cmd(cmd);
       break;
-
     case CMD_TYPE_LIST:
-      lcmd = (struct list_cmd *)cmd;
-      nul_terminate(lcmd->left);
-      nul_terminate(lcmd->right);
+      cmd = nul_terminate_list_cmd(cmd);
       break;
-
     case CMD_TYPE_BACKGROUND:
-      bcmd = (struct background_cmd *)cmd;
-      nul_terminate(bcmd->cmd);
+      cmd = nul_terminate_background_cmd(cmd);
       break;
   }
+  return cmd;
+}
+
+struct cmd *nul_terminate_exec_cmd(struct cmd *cmd) {
+  int i;
+  struct exec_cmd *ecmd;
+  ecmd = (struct exec_cmd *)cmd;
+  for (i = 0; ecmd->argv[i]; i++) *ecmd->eargv[i] = 0;
+  return cmd;
+}
+
+struct cmd *nul_terminate_redirect_cmd(struct cmd *cmd) {
+  struct redirect_cmd *rcmd;
+  rcmd = (struct redirect_cmd *)cmd;
+  nul_terminate(rcmd->cmd);
+  *rcmd->efile = 0;
+  return cmd;
+}
+
+struct cmd *nul_terminate_pipe_cmd(struct cmd *cmd) {
+  struct pipe_cmd *pcmd;
+  pcmd = (struct pipe_cmd *)cmd;
+  nul_terminate(pcmd->left);
+  nul_terminate(pcmd->right);
+  return cmd;
+}
+
+struct cmd *nul_terminate_list_cmd(struct cmd *cmd) {
+  struct list_cmd *lcmd;
+  lcmd = (struct list_cmd *)cmd;
+  nul_terminate(lcmd->left);
+  nul_terminate(lcmd->right);
+  return cmd;
+}
+
+struct cmd *nul_terminate_background_cmd(struct cmd *cmd) {
+  struct background_cmd *bcmd;
+  bcmd = (struct background_cmd *)cmd;
+  nul_terminate(bcmd->cmd);
   return cmd;
 }
