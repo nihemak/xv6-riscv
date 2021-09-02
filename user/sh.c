@@ -4,17 +4,13 @@
 #include "kernel/types.h"
 #include "user/user.h"
 
-// Parsed command representation
-#define CMD_TYPE_EXEC 1
-#define CMD_TYPE_REDIRECT 2
-#define CMD_TYPE_PIPE 3
-#define CMD_TYPE_LIST 4
-#define CMD_TYPE_BACKGROUND 5
-
 #define MAXARGS 10
 
 struct cmd {
-  int type;
+  // Execute cmd.  Never returns.
+  void (*run)(struct cmd *);
+  // NUL-terminate all the counted strings.
+  struct cmd *(*nul_terminate)(struct cmd *);
 };
 
 struct exec_cmd {
@@ -53,96 +49,6 @@ int fork1(void);  // Fork but panics on failure.
 void panic(char *);
 struct cmd *parse_cmd(char *);
 
-void run_exec_cmd(struct cmd *);
-void run_redirect_cmd(struct cmd *);
-void run_list_cmd(struct cmd *);
-void run_pipe_cmd(struct cmd *);
-void run_background_cmd(struct cmd *);
-
-// Execute cmd.  Never returns.
-void run_cmd(struct cmd *cmd) {
-  if (cmd == 0) exit(1);
-
-  switch (cmd->type) {
-    case CMD_TYPE_EXEC:
-      run_exec_cmd(cmd);
-      break;
-    case CMD_TYPE_REDIRECT:
-      run_redirect_cmd(cmd);
-      break;
-    case CMD_TYPE_LIST:
-      run_list_cmd(cmd);
-      break;
-    case CMD_TYPE_PIPE:
-      run_pipe_cmd(cmd);
-      break;
-    case CMD_TYPE_BACKGROUND:
-      run_background_cmd(cmd);
-      break;
-    default:
-      panic("runcmd");
-  }
-  exit(0);
-}
-
-void run_exec_cmd(struct cmd *cmd) {
-  struct exec_cmd *ecmd;
-  ecmd = (struct exec_cmd *)cmd;
-  if (ecmd->argv[0] == 0) exit(1);
-  exec(ecmd->argv[0], ecmd->argv);
-  fprintf(2, "exec %s failed\n", ecmd->argv[0]);
-}
-
-void run_redirect_cmd(struct cmd *cmd) {
-  struct redirect_cmd *rcmd;
-  rcmd = (struct redirect_cmd *)cmd;
-  close(rcmd->fd);
-  if (open(rcmd->file, rcmd->mode) < 0) {
-    fprintf(2, "open %s failed\n", rcmd->file);
-    exit(1);
-  }
-  run_cmd(rcmd->cmd);
-}
-
-void run_list_cmd(struct cmd *cmd) {
-  struct list_cmd *lcmd;
-  lcmd = (struct list_cmd *)cmd;
-  if (fork1() == 0) run_cmd(lcmd->left);
-  wait(0);
-  run_cmd(lcmd->right);
-}
-
-void run_pipe_cmd(struct cmd *cmd) {
-  int p[2];
-  struct pipe_cmd *pcmd;
-  pcmd = (struct pipe_cmd *)cmd;
-  if (pipe(p) < 0) panic("pipe");
-  if (fork1() == 0) {
-    close(1);
-    dup(p[1]);
-    close(p[0]);
-    close(p[1]);
-    run_cmd(pcmd->left);
-  }
-  if (fork1() == 0) {
-    close(0);
-    dup(p[0]);
-    close(p[0]);
-    close(p[1]);
-    run_cmd(pcmd->right);
-  }
-  close(p[0]);
-  close(p[1]);
-  wait(0);
-  wait(0);
-}
-
-void run_background_cmd(struct cmd *cmd) {
-  struct background_cmd *bcmd;
-  bcmd = (struct background_cmd *)cmd;
-  if (fork1() == 0) run_cmd(bcmd->cmd);
-}
-
 int get_cmd(char *buf, int nbuf) {
   fprintf(2, "$ ");
   memset(buf, 0, nbuf);
@@ -172,7 +78,10 @@ int main(void) {
       if (chdir(dir) < 0) fprintf(2, "cannot cd %s\n", dir);
       continue;
     }
-    if (fork1() == 0) run_cmd(parse_cmd(input));
+    if (fork1() == 0) {
+      struct cmd *cmd = parse_cmd(input);
+      cmd->run(cmd);
+    }
     wait(0);
   }
   exit(0);
@@ -194,14 +103,38 @@ int fork1(void) {
 // PAGEBREAK!
 // Constructors
 
+void run_exec_cmd(struct cmd *);
+struct cmd *nul_terminate_exec_cmd(struct cmd *);
+
 struct cmd *exec_cmd(void) {
   struct exec_cmd *cmd;
 
   cmd = malloc(sizeof(*cmd));
   memset(cmd, 0, sizeof(*cmd));
-  ((struct cmd *)cmd)->type = CMD_TYPE_EXEC;
+  ((struct cmd *)cmd)->run = run_exec_cmd;
+  ((struct cmd *)cmd)->nul_terminate = nul_terminate_exec_cmd;
   return (struct cmd *)cmd;
 }
+
+void run_exec_cmd(struct cmd *cmd) {
+  struct exec_cmd *ecmd;
+  ecmd = (struct exec_cmd *)cmd;
+  if (ecmd->argv[0] == 0) exit(1);
+  exec(ecmd->argv[0], ecmd->argv);
+  fprintf(2, "exec %s failed\n", ecmd->argv[0]);
+  exit(0);
+}
+
+struct cmd *nul_terminate_exec_cmd(struct cmd *cmd) {
+  int i;
+  struct exec_cmd *ecmd;
+  ecmd = (struct exec_cmd *)cmd;
+  for (i = 0; ecmd->argv[i]; i++) *ecmd->eargv[i] = 0;
+  return cmd;
+}
+
+void run_redirect_cmd(struct cmd *);
+struct cmd *nul_terminate_redirect_cmd(struct cmd *);
 
 struct cmd *redirect_cmd(struct cmd *subcmd, char *file, char *efile, int mode,
                          int fd) {
@@ -209,7 +142,8 @@ struct cmd *redirect_cmd(struct cmd *subcmd, char *file, char *efile, int mode,
 
   cmd = malloc(sizeof(*cmd));
   memset(cmd, 0, sizeof(*cmd));
-  ((struct cmd *)cmd)->type = CMD_TYPE_REDIRECT;
+  ((struct cmd *)cmd)->run = run_redirect_cmd;
+  ((struct cmd *)cmd)->nul_terminate = nul_terminate_redirect_cmd;
   cmd->cmd = subcmd;
   cmd->file = file;
   cmd->efile = efile;
@@ -218,37 +152,135 @@ struct cmd *redirect_cmd(struct cmd *subcmd, char *file, char *efile, int mode,
   return (struct cmd *)cmd;
 }
 
+void run_redirect_cmd(struct cmd *cmd) {
+  struct redirect_cmd *rcmd;
+  rcmd = (struct redirect_cmd *)cmd;
+  close(rcmd->fd);
+  if (open(rcmd->file, rcmd->mode) < 0) {
+    fprintf(2, "open %s failed\n", rcmd->file);
+    exit(1);
+  }
+  rcmd->cmd->run(rcmd->cmd);
+  exit(0);
+}
+
+struct cmd *nul_terminate_redirect_cmd(struct cmd *cmd) {
+  struct redirect_cmd *rcmd;
+  rcmd = (struct redirect_cmd *)cmd;
+  rcmd->cmd->nul_terminate(rcmd->cmd);
+  *rcmd->efile = 0;
+  return cmd;
+}
+
+void run_pipe_cmd(struct cmd *);
+struct cmd *nul_terminate_pipe_cmd(struct cmd *);
+
 struct cmd *pipe_cmd(struct cmd *left, struct cmd *right) {
   struct pipe_cmd *cmd;
 
   cmd = malloc(sizeof(*cmd));
   memset(cmd, 0, sizeof(*cmd));
-  ((struct cmd *)cmd)->type = CMD_TYPE_PIPE;
+  ((struct cmd *)cmd)->run = run_pipe_cmd;
+  ((struct cmd *)cmd)->nul_terminate = nul_terminate_pipe_cmd;
   cmd->left = left;
   cmd->right = right;
   return (struct cmd *)cmd;
 }
+
+void run_pipe_cmd(struct cmd *cmd) {
+  int p[2];
+  struct pipe_cmd *pcmd;
+  pcmd = (struct pipe_cmd *)cmd;
+  if (pipe(p) < 0) panic("pipe");
+  if (fork1() == 0) {
+    close(1);
+    dup(p[1]);
+    close(p[0]);
+    close(p[1]);
+    pcmd->left->run(pcmd->left);
+  }
+  if (fork1() == 0) {
+    close(0);
+    dup(p[0]);
+    close(p[0]);
+    close(p[1]);
+    pcmd->right->run(pcmd->right);
+  }
+  close(p[0]);
+  close(p[1]);
+  wait(0);
+  wait(0);
+  exit(0);
+}
+
+struct cmd *nul_terminate_pipe_cmd(struct cmd *cmd) {
+  struct pipe_cmd *pcmd;
+  pcmd = (struct pipe_cmd *)cmd;
+  pcmd->left->nul_terminate(pcmd->left);
+  pcmd->right->nul_terminate(pcmd->right);
+  return cmd;
+}
+
+void run_list_cmd(struct cmd *);
+struct cmd *nul_terminate_list_cmd(struct cmd *);
 
 struct cmd *list_cmd(struct cmd *left, struct cmd *right) {
   struct list_cmd *cmd;
 
   cmd = malloc(sizeof(*cmd));
   memset(cmd, 0, sizeof(*cmd));
-  ((struct cmd *)cmd)->type = CMD_TYPE_LIST;
+  ((struct cmd *)cmd)->run = run_list_cmd;
+  ((struct cmd *)cmd)->nul_terminate = nul_terminate_list_cmd;
   cmd->left = left;
   cmd->right = right;
   return (struct cmd *)cmd;
 }
+
+void run_list_cmd(struct cmd *cmd) {
+  struct list_cmd *lcmd;
+  lcmd = (struct list_cmd *)cmd;
+  if (fork1() == 0) lcmd->left->run(lcmd->left);
+  wait(0);
+  lcmd->right->run(lcmd->right);
+  exit(0);
+}
+
+struct cmd *nul_terminate_list_cmd(struct cmd *cmd) {
+  struct list_cmd *lcmd;
+  lcmd = (struct list_cmd *)cmd;
+  lcmd->left->nul_terminate(lcmd->left);
+  lcmd->right->nul_terminate(lcmd->right);
+  return cmd;
+}
+
+void run_background_cmd(struct cmd *);
+struct cmd *nul_terminate_background_cmd(struct cmd *);
 
 struct cmd *background_cmd(struct cmd *subcmd) {
   struct background_cmd *cmd;
 
   cmd = malloc(sizeof(*cmd));
   memset(cmd, 0, sizeof(*cmd));
-  ((struct cmd *)cmd)->type = CMD_TYPE_BACKGROUND;
+  ((struct cmd *)cmd)->run = run_background_cmd;
+  ((struct cmd *)cmd)->nul_terminate = nul_terminate_background_cmd;
   cmd->cmd = subcmd;
   return (struct cmd *)cmd;
 }
+
+void run_background_cmd(struct cmd *cmd) {
+  struct background_cmd *bcmd;
+  bcmd = (struct background_cmd *)cmd;
+  if (fork1() == 0) bcmd->cmd->run(bcmd->cmd);
+  exit(0);
+}
+
+struct cmd *nul_terminate_background_cmd(struct cmd *cmd) {
+  struct background_cmd *bcmd;
+  bcmd = (struct background_cmd *)cmd;
+  bcmd->cmd->nul_terminate(bcmd->cmd);
+  return cmd;
+}
+
 // PAGEBREAK!
 // Parsing
 
@@ -305,7 +337,6 @@ int peek(char **ps, char *es, char *toks) {
 struct cmd *parse_line(char **, char *);
 struct cmd *parse_pipe(char **, char *);
 struct cmd *parse_exec(char **, char *);
-struct cmd *nul_terminate(struct cmd *);
 
 struct cmd *parse_cmd(char *s) {
   char *es;
@@ -318,7 +349,7 @@ struct cmd *parse_cmd(char *s) {
     fprintf(2, "leftovers: %s\n", s);
     panic("syntax");
   }
-  nul_terminate(cmd);
+  cmd->nul_terminate(cmd);
   return cmd;
 }
 
@@ -408,73 +439,4 @@ struct cmd *parse_exec(char **ps, char *es) {
   cmd->argv[argc] = 0;
   cmd->eargv[argc] = 0;
   return ret;
-}
-
-struct cmd *nul_terminate_exec_cmd(struct cmd *);
-struct cmd *nul_terminate_redirect_cmd(struct cmd *);
-struct cmd *nul_terminate_pipe_cmd(struct cmd *);
-struct cmd *nul_terminate_list_cmd(struct cmd *);
-struct cmd *nul_terminate_background_cmd(struct cmd *);
-
-// NUL-terminate all the counted strings.
-struct cmd *nul_terminate(struct cmd *cmd) {
-  if (cmd == 0) return 0;
-
-  switch (cmd->type) {
-    case CMD_TYPE_EXEC:
-      cmd = nul_terminate_exec_cmd(cmd);
-      break;
-    case CMD_TYPE_REDIRECT:
-      cmd = nul_terminate_redirect_cmd(cmd);
-      break;
-    case CMD_TYPE_PIPE:
-      cmd = nul_terminate_pipe_cmd(cmd);
-      break;
-    case CMD_TYPE_LIST:
-      cmd = nul_terminate_list_cmd(cmd);
-      break;
-    case CMD_TYPE_BACKGROUND:
-      cmd = nul_terminate_background_cmd(cmd);
-      break;
-  }
-  return cmd;
-}
-
-struct cmd *nul_terminate_exec_cmd(struct cmd *cmd) {
-  int i;
-  struct exec_cmd *ecmd;
-  ecmd = (struct exec_cmd *)cmd;
-  for (i = 0; ecmd->argv[i]; i++) *ecmd->eargv[i] = 0;
-  return cmd;
-}
-
-struct cmd *nul_terminate_redirect_cmd(struct cmd *cmd) {
-  struct redirect_cmd *rcmd;
-  rcmd = (struct redirect_cmd *)cmd;
-  nul_terminate(rcmd->cmd);
-  *rcmd->efile = 0;
-  return cmd;
-}
-
-struct cmd *nul_terminate_pipe_cmd(struct cmd *cmd) {
-  struct pipe_cmd *pcmd;
-  pcmd = (struct pipe_cmd *)cmd;
-  nul_terminate(pcmd->left);
-  nul_terminate(pcmd->right);
-  return cmd;
-}
-
-struct cmd *nul_terminate_list_cmd(struct cmd *cmd) {
-  struct list_cmd *lcmd;
-  lcmd = (struct list_cmd *)cmd;
-  nul_terminate(lcmd->left);
-  nul_terminate(lcmd->right);
-  return cmd;
-}
-
-struct cmd *nul_terminate_background_cmd(struct cmd *cmd) {
-  struct background_cmd *bcmd;
-  bcmd = (struct background_cmd *)cmd;
-  nul_terminate(bcmd->cmd);
-  return cmd;
 }
