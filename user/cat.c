@@ -2,10 +2,9 @@
 #include "kernel/types.h"
 #include "user/user.h"
 
-char buf[512];
-
 void cat(int fd) {
   int n;
+  char buf[512];
 
   while ((n = read(fd, buf, sizeof(buf))) > 0) {
     if (write(1, buf, n) != n) {
@@ -20,14 +19,13 @@ void cat(int fd) {
 }
 
 int main(int argc, char *argv[]) {
-  int fd, i;
-
   if (argc <= 1) {
     cat(0);
     exit(0);
   }
 
-  for (i = 1; i < argc; i++) {
+  for (int i = 1; i < argc; i++) {
+    int fd;
     if ((fd = open(argv[i], 0)) < 0) {
       fprintf(2, "cat: cannot open %s\n", argv[i]);
       exit(1);
