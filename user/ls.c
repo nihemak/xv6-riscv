@@ -3,8 +3,8 @@
 #include "kernel/types.h"
 #include "user/user.h"
 
-char *fmtname(char *path) {
-  static char buf[DIRSIZ + 1];
+char *get_filename(char *path) {
+  static char filename[DIRSIZ + 1];
   char *p;
 
   // Find first character after last slash.
@@ -14,9 +14,9 @@ char *fmtname(char *path) {
 
   // Return blank-padded name.
   if (strlen(p) >= DIRSIZ) return p;
-  memmove(buf, p, strlen(p));
-  memset(buf + strlen(p), ' ', DIRSIZ - strlen(p));
-  return buf;
+  memmove(filename, p, strlen(p));
+  memset(filename + strlen(p), ' ', DIRSIZ - strlen(p));
+  return filename;
 }
 
 void ls(char *path) {
@@ -38,7 +38,7 @@ void ls(char *path) {
 
   switch (st.type) {
     case T_FILE:
-      printf("%s %d %d %l\n", fmtname(path), st.type, st.ino, st.size);
+      printf("%s %d %d %l\n", get_filename(path), st.type, st.ino, st.size);
       break;
 
     case T_DIR:
@@ -57,7 +57,7 @@ void ls(char *path) {
           printf("ls: cannot stat %s\n", buf);
           continue;
         }
-        printf("%s %d %d %d\n", fmtname(buf), st.type, st.ino, st.size);
+        printf("%s %d %d %d\n", get_filename(buf), st.type, st.ino, st.size);
       }
       break;
   }
@@ -65,12 +65,10 @@ void ls(char *path) {
 }
 
 int main(int argc, char *argv[]) {
-  int i;
-
   if (argc < 2) {
     ls(".");
     exit(0);
   }
-  for (i = 1; i < argc; i++) ls(argv[i]);
+  for (int i = 1; i < argc; i++) ls(argv[i]);
   exit(0);
 }
