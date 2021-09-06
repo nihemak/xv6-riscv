@@ -1,10 +1,13 @@
+#include <stdbool.h>
+
 #include "kernel/stat.h"
 #include "kernel/types.h"
 #include "user/user.h"
 
 void wc(int fd, char *name) {
   int n;
-  int l = 0, w = 0, c = 0, inword = 0;
+  int l = 0, w = 0, c = 0;
+  bool inword = false;
   char buf[512];
 
   while ((n = read(fd, buf, sizeof(buf))) > 0) {
@@ -12,10 +15,10 @@ void wc(int fd, char *name) {
       c++;
       if (buf[i] == '\n') l++;
       if (strchr(" \r\t\n\v", buf[i]))
-        inword = 0;
+        inword = false;
       else if (!inword) {
         w++;
-        inword = 1;
+        inword = true;
       }
     }
   }
