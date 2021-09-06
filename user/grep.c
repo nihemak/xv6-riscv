@@ -1,18 +1,19 @@
 // Simple grep.  Only supports ^ . * $ operators.
 
+#include <stdbool.h>
+
 #include "kernel/stat.h"
 #include "kernel/types.h"
 #include "user/user.h"
 
-char buf[1024];
-int match(char *, char *);
+bool match(char *, char *);
 
 void grep(char *pattern, int fd) {
-  int n, m;
-  char *p, *q;
+  int n, m = 0;
+  char buf[1024];
 
-  m = 0;
   while ((n = read(fd, buf + m, sizeof(buf) - m - 1)) > 0) {
+    char *p, *q;
     m += n;
     buf[m] = '\0';
     p = buf;
@@ -32,7 +33,6 @@ void grep(char *pattern, int fd) {
 }
 
 int main(int argc, char *argv[]) {
-  int fd, i;
   char *pattern;
 
   if (argc <= 1) {
@@ -46,8 +46,9 @@ int main(int argc, char *argv[]) {
     exit(0);
   }
 
-  for (i = 2; i < argc; i++) {
-    if ((fd = open(argv[i], 0)) < 0) {
+  for (int i = 2; i < argc; i++) {
+    int fd = open(argv[i], 0);
+    if (fd < 0) {
       printf("grep: cannot open %s\n", argv[i]);
       exit(1);
     }
@@ -60,31 +61,31 @@ int main(int argc, char *argv[]) {
 // Regexp matcher from Kernighan & Pike,
 // The Practice of Programming, Chapter 9.
 
-int matchhere(char *, char *);
-int matchstar(int, char *, char *);
+bool matchhere(char *, char *);
+bool matchstar(int, char *, char *);
 
-int match(char *re, char *text) {
-  if (re[0] == '^') return matchhere(re + 1, text);
+bool match(char *regexp, char *text) {
+  if (regexp[0] == '^') return matchhere(regexp + 1, text);
   do {  // must look at empty string
-    if (matchhere(re, text)) return 1;
+    if (matchhere(regexp, text)) return true;
   } while (*text++ != '\0');
-  return 0;
+  return false;
 }
 
-// matchhere: search for re at beginning of text
-int matchhere(char *re, char *text) {
-  if (re[0] == '\0') return 1;
-  if (re[1] == '*') return matchstar(re[0], re + 2, text);
-  if (re[0] == '$' && re[1] == '\0') return *text == '\0';
-  if (*text != '\0' && (re[0] == '.' || re[0] == *text))
-    return matchhere(re + 1, text + 1);
-  return 0;
+// matchhere: search for regexp at beginning of text
+bool matchhere(char *regexp, char *text) {
+  if (regexp[0] == '\0') return true;
+  if (regexp[1] == '*') return matchstar(regexp[0], regexp + 2, text);
+  if (regexp[0] == '$' && regexp[1] == '\0') return *text == '\0';
+  if (*text != '\0' && (regexp[0] == '.' || regexp[0] == *text))
+    return matchhere(regexp + 1, text + 1);
+  return false;
 }
 
-// matchstar: search for c*re at beginning of text
-int matchstar(int c, char *re, char *text) {
+// matchstar: search for c*regexp at beginning of text
+bool matchstar(int c, char *regexp, char *text) {
   do {  // a * matches zero or more instances
-    if (matchhere(re, text)) return 1;
+    if (matchhere(regexp, text)) return true;
   } while (*text != '\0' && (*text++ == c || c == '.'));
-  return 0;
+  return false;
 }
