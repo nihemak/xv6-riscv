@@ -1,4 +1,5 @@
 #include <stdarg.h>
+#include <stdbool.h>
 
 #include "kernel/stat.h"
 #include "kernel/types.h"
@@ -8,20 +9,17 @@ static char digits[] = "0123456789ABCDEF";
 
 static void putc(int fd, char c) { write(fd, &c, 1); }
 
-static void printint(int fd, int xx, int base, int sgn) {
+static void printint(int fd, int xx, int base, bool sgn) {
   char buf[16];
-  int i, neg;
-  uint x;
+  int i = 0;
+  bool neg = false;
+  uint x = xx;
 
-  neg = 0;
-  if (sgn && xx < 0) {
-    neg = 1;
-    x = -xx;
-  } else {
-    x = xx;
+  if (sgn && x < 0) {
+    neg = true;
+    x = -x;
   }
 
-  i = 0;
   do {
     buf[i++] = digits[x % base];
   } while ((x /= base) != 0);
@@ -31,21 +29,18 @@ static void printint(int fd, int xx, int base, int sgn) {
 }
 
 static void printptr(int fd, uint64 x) {
-  int i;
   putc(fd, '0');
   putc(fd, 'x');
-  for (i = 0; i < (sizeof(uint64) * 2); i++, x <<= 4)
+  for (int i = 0; i < (sizeof(uint64) * 2); i++, x <<= 4)
     putc(fd, digits[x >> (sizeof(uint64) * 8 - 4)]);
 }
 
 // Print to the given fd. Only understands %d, %x, %p, %s.
 void vprintf(int fd, const char *fmt, va_list ap) {
-  char *s;
-  int c, i, state;
+  int state = 0;
 
-  state = 0;
-  for (i = 0; fmt[i]; i++) {
-    c = fmt[i] & 0xff;
+  for (int i = 0; fmt[i]; i++) {
+    int c = fmt[i] & 0xff;
     if (state == 0) {
       if (c == '%') {
         state = '%';
@@ -53,29 +48,39 @@ void vprintf(int fd, const char *fmt, va_list ap) {
         putc(fd, c);
       }
     } else if (state == '%') {
-      if (c == 'd') {
-        printint(fd, va_arg(ap, int), 10, 1);
-      } else if (c == 'l') {
-        printint(fd, va_arg(ap, uint64), 10, 0);
-      } else if (c == 'x') {
-        printint(fd, va_arg(ap, int), 16, 0);
-      } else if (c == 'p') {
-        printptr(fd, va_arg(ap, uint64));
-      } else if (c == 's') {
-        s = va_arg(ap, char *);
-        if (s == 0) s = "(null)";
-        while (*s != 0) {
-          putc(fd, *s);
-          s++;
-        }
-      } else if (c == 'c') {
-        putc(fd, va_arg(ap, uint));
-      } else if (c == '%') {
-        putc(fd, c);
-      } else {
-        // Unknown % sequence.  Print it to draw attention.
-        putc(fd, '%');
-        putc(fd, c);
+      char *s;
+      switch (c) {
+        case 'd':
+          printint(fd, va_arg(ap, int), 10, true /* sgn */);
+          break;
+        case 'l':
+          printint(fd, va_arg(ap, uint64), 10, false /* sgn */);
+          break;
+        case 'x':
+          printint(fd, va_arg(ap, int), 16, false /* sgn */);
+          break;
+        case 'p':
+          printptr(fd, va_arg(ap, uint64));
+          break;
+        case 's':
+          s = va_arg(ap, char *);
+          if (s == 0) s = "(null)";
+          while (*s != 0) {
+            putc(fd, *s);
+            s++;
+          }
+          break;
+        case 'c':
+          putc(fd, va_arg(ap, uint));
+          break;
+        case '%':
+          putc(fd, c);
+          break;
+        default:
+          // Unknown % sequence.  Print it to draw attention.
+          putc(fd, '%');
+          putc(fd, c);
+          break;
       }
       state = 0;
     }
