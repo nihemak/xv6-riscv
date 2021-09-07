@@ -4,9 +4,7 @@
 #include "user/user.h"
 
 char *strcpy(char *s, const char *t) {
-  char *os;
-
-  os = s;
+  char *os = s;
   while ((*s++ = *t++) != 0)
     ;
   return os;
@@ -19,7 +17,6 @@ int strcmp(const char *p, const char *q) {
 
 uint strlen(const char *s) {
   int n;
-
   for (n = 0; s[n]; n++)
     ;
   return n;
@@ -27,8 +24,7 @@ uint strlen(const char *s) {
 
 void *memset(void *dst, int c, uint n) {
   char *cdst = (char *)dst;
-  int i;
-  for (i = 0; i < n; i++) {
+  for (int i = 0; i < n; i++) {
     cdst[i] = c;
   }
   return dst;
@@ -41,11 +37,10 @@ char *strchr(const char *s, char c) {
 }
 
 char *gets(char *buf, int max) {
-  int i, cc;
-  char c;
-
+  int i;
   for (i = 0; i + 1 < max;) {
-    cc = read(0, &c, 1);
+    char c;
+    int cc = read(0, &c, 1);
     if (cc < 1) break;
     buf[i++] = c;
     if (c == '\n' || c == '\r') break;
@@ -55,10 +50,8 @@ char *gets(char *buf, int max) {
 }
 
 int stat(const char *n, struct stat *st) {
-  int fd;
   int r;
-
-  fd = open(n, O_RDONLY);
+  int fd = open(n, O_RDONLY);
   if (fd < 0) return -1;
   r = fstat(fd, st);
   close(fd);
@@ -66,19 +59,14 @@ int stat(const char *n, struct stat *st) {
 }
 
 int atoi(const char *s) {
-  int n;
-
-  n = 0;
+  int n = 0;
   while ('0' <= *s && *s <= '9') n = n * 10 + *s++ - '0';
   return n;
 }
 
 void *memmove(void *vdst, const void *vsrc, int n) {
-  char *dst;
-  const char *src;
-
-  dst = vdst;
-  src = vsrc;
+  char *dst = vdst;
+  const char *src = vsrc;
   if (src > dst) {
     while (n-- > 0) *dst++ = *src++;
   } else {
