@@ -1,3 +1,4 @@
+#include "kernel/riscv.h"
 #include "kernel/types.h"
 
 struct buf;

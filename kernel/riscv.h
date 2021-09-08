@@ -1,3 +1,6 @@
+#ifndef __KERNEL__RISCV_H__
+#define __KERNEL__RISCV_H__
+
 #include "kernel/types.h"
 
 // which hart (core) is this?
@@ -265,3 +268,5 @@ static inline void sfence_vma() {
 
 typedef uint64 pte_t;
 typedef uint64 *pagetable_t;  // 512 PTEs
+
+#endif
