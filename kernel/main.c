@@ -1,10 +1,12 @@
+#include <stdbool.h>
+
 #include "defs.h"
 #include "memlayout.h"
 #include "param.h"
 #include "riscv.h"
 #include "types.h"
 
-volatile static int started = 0;
+volatile static bool started = false;
 
 // start() jumps here in supervisor mode on all CPUs.
 void main() {
@@ -28,9 +30,9 @@ void main() {
     virtio_disk_init();  // emulated hard disk
     userinit();          // first user process
     __sync_synchronize();
-    started = 1;
+    started = true;
   } else {
-    while (started == 0)
+    while (!started)
       ;
     __sync_synchronize();
     printf("hart %d starting\n", cpuid());
