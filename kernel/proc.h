@@ -1,3 +1,6 @@
+#include "kernel/param.h"
+#include "kernel/riscv.h"
+#include "kernel/spinlock.h"
 #include "kernel/types.h"
 
 // Saved registers for kernel context switches.
