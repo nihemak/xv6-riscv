@@ -70,11 +70,11 @@ void kvminithart() {
 //   21..29 -- 9 bits of level-1 index.
 //   12..20 -- 9 bits of level-0 index.
 //    0..11 -- 12 bits of byte offset within the page.
-pte_t *walk(pagetable_t pagetable, uint64 va, int alloc) {
-  if (va >= MAXVA) panic("walk");
+pte_t *walk(pagetable_t pagetable, uint64 virtual_address, bool alloc) {
+  if (virtual_address >= MAXVA) panic("walk");
 
   for (int level = 2; level > 0; level--) {
-    pte_t *pte = &pagetable[PX(level, va)];
+    pte_t *pte = &pagetable[PX(level, virtual_address)];
     if (*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
     } else {
@@ -83,7 +83,7 @@ pte_t *walk(pagetable_t pagetable, uint64 va, int alloc) {
       *pte = PA2PTE(pagetable) | PTE_V;
     }
   }
-  return &pagetable[PX(0, va)];
+  return &pagetable[PX(0, virtual_address)];
 }
 
 // Look up a virtual address, return the physical address,
@@ -95,7 +95,7 @@ uint64 walkaddr(pagetable_t pagetable, uint64 va) {
 
   if (va >= MAXVA) return 0;
 
-  pte = walk(pagetable, va, 0);
+  pte = walk(pagetable, va, false /* alloc */);
   if (pte == 0) return 0;
   if ((*pte & PTE_V) == 0) return 0;
   if ((*pte & PTE_U) == 0) return 0;
@@ -120,7 +120,7 @@ int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa,
   uint64 last = PGROUNDDOWN(va + size - 1);
 
   for (;;) {
-    pte_t *pte = walk(pagetable, a, 1);
+    pte_t *pte = walk(pagetable, a, true /* alloc */);
     if (pte == 0) return -1;
     if (*pte & PTE_V) panic("remap");
     *pte = PA2PTE(pa) | perm | PTE_V;
@@ -138,7 +138,7 @@ void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
   if ((va % PGSIZE) != 0) panic("uvmunmap: not aligned");
 
   for (uint64 a = va; a < va + npages * PGSIZE; a += PGSIZE) {
-    pte_t *pte = walk(pagetable, a, 0);
+    pte_t *pte = walk(pagetable, a, false /* alloc */);
     if (pte == 0) panic("uvmunmap: walk");
     if ((*pte & PTE_V) == 0) panic("uvmunmap: not mapped");
     if (PTE_FLAGS(*pte) == PTE_V) panic("uvmunmap: not a leaf");
@@ -245,7 +245,7 @@ int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
   uint64 i;
 
   for (i = 0; i < sz; i += PGSIZE) {
-    pte_t *pte = walk(old, i, 0);
+    pte_t *pte = walk(old, i, false /* alloc */);
     uint64 pa;
     uint flags;
     char *mem;
@@ -270,7 +270,7 @@ err:
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
 void uvmclear(pagetable_t pagetable, uint64 va) {
-  pte_t *pte = walk(pagetable, va, 0);
+  pte_t *pte = walk(pagetable, va, false /* alloc */);
   if (pte == 0) panic("uvmclear");
   *pte &= ~PTE_U;
 }
