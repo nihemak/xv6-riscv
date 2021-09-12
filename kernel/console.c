@@ -74,11 +74,10 @@ int consolewrite(int user_src, uint64 src, int n) {
 // or kernel address.
 //
 int consoleread(int user_dst, uint64 dst, int n) {
-  uint target;
+  uint target = n;
   int c;
   char cbuf;
 
-  target = n;
   acquire(&cons.lock);
   while (n > 0) {
     // wait until interrupt handler has put some
@@ -94,11 +93,9 @@ int consoleread(int user_dst, uint64 dst, int n) {
     c = cons.buf[cons.r++ % INPUT_BUF];
 
     if (c == C('D')) {  // end-of-file
-      if (n < target) {
-        // Save ^D for next time, to make sure
-        // caller gets a 0-byte result.
-        cons.r--;
-      }
+      // Save ^D for next time, to make sure
+      // caller gets a 0-byte result.
+      if (n < target) cons.r--;
       break;
     }
 
@@ -109,11 +106,9 @@ int consoleread(int user_dst, uint64 dst, int n) {
     dst++;
     --n;
 
-    if (c == '\n') {
-      // a whole line has arrived, return to
-      // the user-level read().
-      break;
-    }
+    // a whole line has arrived, return to
+    // the user-level read().
+    if (c == '\n') break;
   }
   release(&cons.lock);
 
