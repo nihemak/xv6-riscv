@@ -130,17 +130,13 @@ void uartputc_sync(int c) {
 // called from both the top- and bottom-half.
 void uartstart() {
   while (1) {
-    if (uart_tx_w == uart_tx_r) {
-      // transmit buffer is empty.
-      return;
-    }
+    // transmit buffer is empty.
+    if (uart_tx_w == uart_tx_r) return;
 
-    if ((ReadReg(LSR) & LSR_TX_IDLE) == 0) {
-      // the UART transmit holding register is full,
-      // so we cannot give it another byte.
-      // it will interrupt when it's ready for a new byte.
-      return;
-    }
+    // the UART transmit holding register is full,
+    // so we cannot give it another byte.
+    // it will interrupt when it's ready for a new byte.
+    if ((ReadReg(LSR) & LSR_TX_IDLE) == 0) return;
 
     int c = uart_tx_buf[uart_tx_r % UART_TX_BUF_SIZE];
     uart_tx_r += 1;
