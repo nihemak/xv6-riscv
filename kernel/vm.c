@@ -106,8 +106,10 @@ uint64 walkaddr(pagetable_t pagetable, uint64 va) {
 // add a mapping to the kernel page table.
 // only used when booting.
 // does not flush TLB or enable paging.
-void kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm) {
-  if (!mappages(kpgtbl, va, sz, pa, perm)) panic("kvmmap");
+void kvmmap(pagetable_t kpgtbl, uint64 virtual_address, uint64 physical_address,
+            uint64 size, int perm) {
+  if (!mappages(kpgtbl, virtual_address, size, physical_address, perm))
+    panic("kvmmap");
 }
 
 // Create PTEs for virtual addresses starting at va that refer to
