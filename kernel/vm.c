@@ -114,18 +114,19 @@ void kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm) {
 // physical addresses starting at pa. va and size might not
 // be page-aligned. Returns 0 on success, -1 if walk() couldn't
 // allocate a needed page-table page.
-int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa,
-             int perm) {
-  uint64 a = PGROUNDDOWN(va);
-  uint64 last = PGROUNDDOWN(va + size - 1);
+int mappages(pagetable_t pagetable, uint64 virtual_address, uint64 size,
+             uint64 physical_address, int perm) {
+  uint64 va = PGROUNDDOWN(virtual_address);
+  uint64 va_last = PGROUNDDOWN(virtual_address + size - 1);
+  uint64 pa = physical_address;
 
   for (;;) {
-    pte_t *pte = walk(pagetable, a, true /* alloc */);
+    pte_t *pte = walk(pagetable, va, true /* alloc */);
     if (pte == 0) return -1;
     if (*pte & PTE_V) panic("remap");
     *pte = PA2PTE(pa) | perm | PTE_V;
-    if (a == last) break;
-    a += PGSIZE;
+    if (va == va_last) break;
+    va += PGSIZE;
     pa += PGSIZE;
   }
   return 0;
