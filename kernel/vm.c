@@ -107,29 +107,29 @@ uint64 walkaddr(pagetable_t pagetable, uint64 va) {
 // only used when booting.
 // does not flush TLB or enable paging.
 void kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm) {
-  if (mappages(kpgtbl, va, sz, pa, perm) != 0) panic("kvmmap");
+  if (!mappages(kpgtbl, va, sz, pa, perm)) panic("kvmmap");
 }
 
 // Create PTEs for virtual addresses starting at va that refer to
 // physical addresses starting at pa. va and size might not
 // be page-aligned. Returns 0 on success, -1 if walk() couldn't
 // allocate a needed page-table page.
-int mappages(pagetable_t pagetable, uint64 virtual_address, uint64 size,
-             uint64 physical_address, int perm) {
+bool mappages(pagetable_t pagetable, uint64 virtual_address, uint64 size,
+              uint64 physical_address, int perm) {
   uint64 va = PGROUNDDOWN(virtual_address);
   uint64 va_last = PGROUNDDOWN(virtual_address + size - 1);
   uint64 pa = physical_address;
 
   for (;;) {
     pte_t *pte = walk(pagetable, va, true /* alloc */);
-    if (pte == 0) return -1;
+    if (pte == 0) return false;
     if (*pte & PTE_V) panic("remap");
     *pte = PA2PTE(pa) | perm | PTE_V;
     if (va == va_last) break;
     va += PGSIZE;
     pa += PGSIZE;
   }
-  return 0;
+  return true;
 }
 
 // Remove npages of mappings starting from va. va must be
@@ -186,8 +186,8 @@ uint64 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
       return 0;
     }
     memset(mem, 0, PGSIZE);
-    if (mappages(pagetable, a, PGSIZE, (uint64)mem,
-                 PTE_W | PTE_X | PTE_R | PTE_U) != 0) {
+    if (!mappages(pagetable, a, PGSIZE, (uint64)mem,
+                  PTE_W | PTE_X | PTE_R | PTE_U)) {
       kfree(mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
@@ -256,7 +256,7 @@ int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
     flags = PTE_FLAGS(*pte);
     if ((mem = kalloc()) == 0) goto err;
     memmove(mem, (char *)pa, PGSIZE);
-    if (mappages(new, i, PGSIZE, (uint64)mem, flags) != 0) {
+    if (!mappages(new, i, PGSIZE, (uint64)mem, flags)) {
       kfree(mem);
       goto err;
     }
