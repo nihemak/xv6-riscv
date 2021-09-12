@@ -67,8 +67,7 @@ void release(struct spinlock *lk) {
 // Check whether this cpu is holding the lock.
 // Interrupts must be off.
 int holding(struct spinlock *lk) {
-  int r;
-  r = (lk->locked && lk->cpu == mycpu());
+  int r = (lk->locked && lk->cpu == mycpu());
   return r;
 }
 
