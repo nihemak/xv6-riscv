@@ -1,3 +1,5 @@
+#include "kernel/fs.h"
+#include "kernel/sleeplock.h"
 #include "kernel/types.h"
 
 struct buf {
