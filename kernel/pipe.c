@@ -20,9 +20,8 @@ struct pipe {
 };
 
 int pipealloc(struct file **f0, struct file **f1) {
-  struct pipe *pi;
+  struct pipe *pi = 0;
 
-  pi = 0;
   *f0 = *f1 = 0;
   if ((*f0 = filealloc()) == 0 || (*f1 = filealloc()) == 0) goto bad;
   if ((pi = (struct pipe *)kalloc()) == 0) goto bad;
@@ -93,7 +92,6 @@ int pipewrite(struct pipe *pi, uint64 addr, int n) {
 int piperead(struct pipe *pi, uint64 addr, int n) {
   int i;
   struct proc *pr = myproc();
-  char ch;
 
   acquire(&pi->lock);
   while (pi->nread == pi->nwrite && pi->writeopen) {  // DOC: pipe-empty
@@ -104,6 +102,7 @@ int piperead(struct pipe *pi, uint64 addr, int n) {
     sleep(&pi->nread, &pi->lock);  // DOC: piperead-sleep
   }
   for (i = 0; i < n; i++) {  // DOC: piperead-copy
+    char ch;
     if (pi->nread == pi->nwrite) break;
     ch = pi->data[pi->nread++ % PIPESIZE];
     if (copyout(pr->pagetable, addr + i, &ch, 1) == -1) break;
