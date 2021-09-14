@@ -165,10 +165,8 @@ static void free_chain(int i) {
     int flag = disk.desc[i].flags;
     int nxt = disk.desc[i].next;
     free_desc(i);
-    if (flag & VRING_DESC_F_NEXT)
-      i = nxt;
-    else
-      break;
+    if (!(flag & VRING_DESC_F_NEXT)) break;
+    i = nxt;
   }
 }
 
@@ -197,9 +195,7 @@ void virtio_disk_rw(struct buf *b, int write) {
   // allocate the three descriptors.
   int idx[3];
   while (1) {
-    if (alloc3_desc(idx) == 0) {
-      break;
-    }
+    if (alloc3_desc(idx) == 0) break;
     sleep(&disk.free[0], &disk.vdisk_lock);
   }
 
@@ -208,10 +204,8 @@ void virtio_disk_rw(struct buf *b, int write) {
 
   struct virtio_blk_req *buf0 = &disk.ops[idx[0]];
 
-  if (write)
-    buf0->type = VIRTIO_BLK_T_OUT;  // write the disk
-  else
-    buf0->type = VIRTIO_BLK_T_IN;  // read the disk
+  buf0->type = write ? VIRTIO_BLK_T_OUT  // write the disk
+                     : VIRTIO_BLK_T_IN;  // read the disk
   buf0->reserved = 0;
   buf0->sector = sector;
 
@@ -222,10 +216,9 @@ void virtio_disk_rw(struct buf *b, int write) {
 
   disk.desc[idx[1]].addr = (uint64)b->data;
   disk.desc[idx[1]].len = BSIZE;
-  if (write)
-    disk.desc[idx[1]].flags = 0;  // device reads b->data
-  else
-    disk.desc[idx[1]].flags = VRING_DESC_F_WRITE;  // device writes b->data
+  disk.desc[idx[1]].flags = write
+                                ? 0                    // device reads b->data
+                                : VRING_DESC_F_WRITE;  // device writes b->data
   disk.desc[idx[1]].flags |= VRING_DESC_F_NEXT;
   disk.desc[idx[1]].next = idx[2];
 
@@ -252,9 +245,7 @@ void virtio_disk_rw(struct buf *b, int write) {
   *R(VIRTIO_MMIO_QUEUE_NOTIFY) = 0;  // value is queue number
 
   // Wait for virtio_disk_intr() to say request has finished.
-  while (b->disk == 1) {
-    sleep(b, &disk.vdisk_lock);
-  }
+  while (b->disk == 1) sleep(b, &disk.vdisk_lock);
 
   disk.info[idx[0]].b = 0;
   free_chain(idx[0]);
