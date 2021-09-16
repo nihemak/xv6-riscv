@@ -24,10 +24,8 @@ void fileinit(void) { initlock(&ftable.lock, "ftable"); }
 
 // Allocate a file structure.
 struct file *filealloc(void) {
-  struct file *f;
-
   acquire(&ftable.lock);
-  for (f = ftable.file; f < ftable.file + NFILE; f++) {
+  for (struct file *f = ftable.file; f < ftable.file + NFILE; f++) {
     if (f->ref == 0) {
       f->ref = 1;
       release(&ftable.lock);
@@ -77,14 +75,12 @@ int filestat(struct file *f, uint64 addr) {
   struct proc *p = myproc();
   struct stat st;
 
-  if (f->type == FD_INODE || f->type == FD_DEVICE) {
-    ilock(f->ip);
-    stati(f->ip, &st);
-    iunlock(f->ip);
-    if (copyout(p->pagetable, addr, (char *)&st, sizeof(st)) < 0) return -1;
-    return 0;
-  }
-  return -1;
+  if (f->type != FD_INODE && f->type != FD_DEVICE) return -1;
+  ilock(f->ip);
+  stati(f->ip, &st);
+  iunlock(f->ip);
+  if (copyout(p->pagetable, addr, (char *)&st, sizeof(st)) < 0) return -1;
+  return 0;
 }
 
 // Read from file f.
@@ -141,10 +137,7 @@ int filewrite(struct file *f, uint64 addr, int n) {
       iunlock(f->ip);
       end_op();
 
-      if (r != n1) {
-        // error from writei
-        break;
-      }
+      if (r != n1) break;  // error from writei
       i += r;
     }
     ret = (i == n ? n : -1);
