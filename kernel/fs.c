@@ -53,9 +53,8 @@ static void bzero(int dev, int bno) {
 
 // Allocate a zeroed disk block.
 static uint balloc(uint dev) {
-  struct buf *bp = 0;
   for (int b = 0; b < sb.size; b += BPB) {
-    bp = bread(dev, BBLOCK(b, sb));
+    struct buf *bp = bread(dev, BBLOCK(b, sb));
     for (int bi = 0; bi < BPB && b + bi < sb.size; bi++) {
       int m = 1 << (bi % 8);
       if ((bp->data[bi / 8] & m) == 0) {  // Is block free?
