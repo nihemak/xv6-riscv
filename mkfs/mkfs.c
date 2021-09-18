@@ -65,8 +65,7 @@ uint xint(uint x) {
 }
 
 int main(int argc, char *argv[]) {
-  int i, cc, fd;
-  uint rootino, inum, off;
+  uint rootino, off;
   struct dirent de;
   char buf[BSIZE];
   struct dinode din;
@@ -107,7 +106,7 @@ int main(int argc, char *argv[]) {
 
   freeblock = nmeta;  // the first free block that we can allocate
 
-  for (i = 0; i < FSSIZE; i++) wsect(i, zeroes);
+  for (int i = 0; i < FSSIZE; i++) wsect(i, zeroes);
 
   memset(buf, 0, sizeof(buf));
   memmove(buf, &sb, sizeof(sb));
@@ -126,14 +125,11 @@ int main(int argc, char *argv[]) {
   strcpy(de.name, "..");
   iappend(rootino, &de, sizeof(de));
 
-  for (i = 2; i < argc; i++) {
+  for (int i = 2; i < argc; i++) {
+    int cc, fd;
+    uint inum;
     // get rid of "user/"
-    char *shortname;
-    if (strncmp(argv[i], "user/", 5) == 0)
-      shortname = argv[i] + 5;
-    else
-      shortname = argv[i];
-
+    char *shortname = strncmp(argv[i], "user/", 5) == 0 ? argv[i] + 5 : argv[i];
     assert(index(shortname, '/') == 0);
 
     if ((fd = open(argv[i], 0)) < 0) {
@@ -184,10 +180,9 @@ void wsect(uint sec, void *buf) {
 
 void winode(uint inum, struct dinode *ip) {
   char buf[BSIZE];
-  uint bn;
+  uint bn = IBLOCK(inum, sb);
   struct dinode *dip;
 
-  bn = IBLOCK(inum, sb);
   rsect(bn, buf);
   dip = ((struct dinode *)buf) + (inum % IPB);
   *dip = *ip;
@@ -196,10 +191,9 @@ void winode(uint inum, struct dinode *ip) {
 
 void rinode(uint inum, struct dinode *ip) {
   char buf[BSIZE];
-  uint bn;
+  uint bn = IBLOCK(inum, sb);
   struct dinode *dip;
 
-  bn = IBLOCK(inum, sb);
   rsect(bn, buf);
   dip = ((struct dinode *)buf) + (inum % IPB);
   *ip = *dip;
@@ -230,12 +224,11 @@ uint ialloc(ushort type) {
 
 void balloc(int used) {
   uchar buf[BSIZE];
-  int i;
 
   printf("balloc: first %d blocks have been allocated\n", used);
   assert(used < BSIZE * 8);
   bzero(buf, BSIZE);
-  for (i = 0; i < used; i++) {
+  for (int i = 0; i < used; i++) {
     buf[i / 8] = buf[i / 8] | (0x1 << (i % 8));
   }
   printf("balloc: write bitmap block at sector %d\n", sb.bmapstart);
@@ -246,27 +239,24 @@ void balloc(int used) {
 
 void iappend(uint inum, void *xp, int n) {
   char *p = (char *)xp;
-  uint fbn, off, n1;
+  uint off;
   struct dinode din;
   char buf[BSIZE];
   uint indirect[NINDIRECT];
-  uint x;
 
   rinode(inum, &din);
   off = xint(din.size);
   // printf("append inum %d at off %d sz %d\n", inum, off, n);
   while (n > 0) {
-    fbn = off / BSIZE;
+    uint fbn = off / BSIZE;
+    uint n1;
+    uint x;
     assert(fbn < MAXFILE);
     if (fbn < NDIRECT) {
-      if (xint(din.addrs[fbn]) == 0) {
-        din.addrs[fbn] = xint(freeblock++);
-      }
+      if (xint(din.addrs[fbn]) == 0) din.addrs[fbn] = xint(freeblock++);
       x = xint(din.addrs[fbn]);
     } else {
-      if (xint(din.addrs[NDIRECT]) == 0) {
-        din.addrs[NDIRECT] = xint(freeblock++);
-      }
+      if (xint(din.addrs[NDIRECT]) == 0) din.addrs[NDIRECT] = xint(freeblock++);
       rsect(xint(din.addrs[NDIRECT]), (char *)indirect);
       if (indirect[fbn - NDIRECT] == 0) {
         indirect[fbn - NDIRECT] = xint(freeblock++);
