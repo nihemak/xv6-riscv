@@ -27,15 +27,9 @@ static char digits[] = "0123456789abcdef";
 
 static void printint(int xx, int base, int sign) {
   char buf[16];
-  int i;
-  uint x;
+  int i = 0;
+  uint x = sign && (sign = xx < 0) ? -xx : xx;
 
-  if (sign && (sign = xx < 0))
-    x = -xx;
-  else
-    x = xx;
-
-  i = 0;
   do {
     buf[i++] = digits[x % base];
   } while ((x /= base) != 0);
@@ -46,26 +40,24 @@ static void printint(int xx, int base, int sign) {
 }
 
 static void printptr(uint64 x) {
-  int i;
   consputc('0');
   consputc('x');
-  for (i = 0; i < (sizeof(uint64) * 2); i++, x <<= 4)
+  for (int i = 0; i < (sizeof(uint64) * 2); i++, x <<= 4)
     consputc(digits[x >> (sizeof(uint64) * 8 - 4)]);
 }
 
 // Print to the console. only understands %d, %x, %p, %s.
 void printf(char *fmt, ...) {
   va_list ap;
-  int i, c, locking;
+  int c, locking = pr.locking;
   char *s;
 
-  locking = pr.locking;
   if (locking) acquire(&pr.lock);
 
   if (fmt == 0) panic("null fmt");
 
   va_start(ap, fmt);
-  for (i = 0; (c = fmt[i] & 0xff) != 0; i++) {
+  for (int i = 0; (c = fmt[i] & 0xff) != 0; i++) {
     if (c != '%') {
       consputc(c);
       continue;
