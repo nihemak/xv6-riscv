@@ -30,9 +30,9 @@ void *memset(void *dst, int c, uint n) {
   return dst;
 }
 
-char *strchr(const char *s, char c) {
-  for (; *s; s++)
-    if (*s == c) return (char *)s;
+char *strchr(const char *string, char c) {
+  for (; *string; string++)
+    if (*string == c) return (char *)string;
   return 0;
 }
 
