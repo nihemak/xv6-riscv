@@ -77,7 +77,7 @@ struct ExecCommand {
 void ExecCommand_main(struct Command *base) {
   struct ExecCommand *cmd = (struct ExecCommand *)base;
   if (cmd->argv[0] == 0) exit(1);
-  for (int i = 0; cmd->argv[i]; i++) *cmd->argv_end[i] = 0;
+  for (int i = 0; cmd->argv[i]; i++) *cmd->argv_end[i] = 0;  // nul terminate
   exec(cmd->argv[0], cmd->argv);
   fprintf(2, "exec %s failed\n", cmd->argv[0]);
   exit(0);
@@ -102,7 +102,7 @@ struct RedirectCommand {
 void RedirectCommand_main(struct Command *base) {
   struct RedirectCommand *cmd = (struct RedirectCommand *)base;
   close(cmd->fd);
-  *cmd->file_name_end = 0;
+  *cmd->file_name_end = 0;  // nul terminate
   if (open(cmd->file_name, cmd->mode) < 0) {
     fprintf(2, "open %s failed\n", cmd->file_name);
     exit(1);
