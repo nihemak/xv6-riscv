@@ -6,15 +6,15 @@ void cat(int fd) {
   int n;
   char buf[512];
 
-  while ((n = read(fd, buf, sizeof(buf))) > 0) {
+  while ((n = read(fd, buf, sizeof(buf))) != 0) {
+    if (n < 0) {
+      fprintf(2, "cat: read error\n");
+      exit(1);
+    }
     if (write(1, buf, n) != n) {
       fprintf(2, "cat: write error\n");
       exit(1);
     }
-  }
-  if (n < 0) {
-    fprintf(2, "cat: read error\n");
-    exit(1);
   }
 }
 
@@ -25,8 +25,8 @@ int main(int argc, char *argv[]) {
   }
 
   for (int i = 1; i < argc; i++) {
-    int fd;
-    if ((fd = open(argv[i], 0)) < 0) {
+    int fd = open(argv[i], 0);
+    if (fd < 0) {
       fprintf(2, "cat: cannot open %s\n", argv[i]);
       exit(1);
     }
