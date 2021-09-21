@@ -101,6 +101,7 @@ struct RedirectCommand {
 
 void RedirectCommand_main(struct Command *base) {
   struct RedirectCommand *cmd = (struct RedirectCommand *)base;
+  // re-open this mean that fd to file_name
   close(cmd->fd);
   *cmd->file_name_end = 0;  // nul terminate
   if (open(cmd->file_name, cmd->mode) < 0) {
@@ -134,16 +135,16 @@ void PipeCommand_main(struct Command *base) {
   int p[2];
   struct PipeCommand *cmd = (struct PipeCommand *)base;
   if (pipe(p) < 0) panic("pipe");
-  if (fork_or_panic() == 0) {
-    close(1);
-    dup(p[1]);
+  if (fork_or_panic() == 0) {  // child to left
+    close(1 /* stdout */);
+    dup(p[1]); /* pipe[1] to stdout(1) */
     close(p[0]);
     close(p[1]);
     cmd->left->execute(cmd->left);
   }
-  if (fork_or_panic() == 0) {
-    close(0);
-    dup(p[0]);
+  if (fork_or_panic() == 0) {  // child to right
+    close(0 /* stdin */);
+    dup(p[0]); /* pipe[0] to stdin(0) */
     close(p[0]);
     close(p[1]);
     cmd->right->execute(cmd->right);
@@ -172,7 +173,7 @@ struct ListCommand {
 
 void ListCommand_main(struct Command *base) {
   struct ListCommand *cmd = (struct ListCommand *)base;
-  if (fork_or_panic() == 0) cmd->left->execute(cmd->left);
+  if (fork_or_panic() == 0) cmd->left->execute(cmd->left);  // child
   wait(0);
   cmd->right->execute(cmd->right);
   exit(0);
@@ -194,7 +195,7 @@ struct BackgroundCommand {
 
 void BackgroundCommand_main(struct Command *base) {
   struct BackgroundCommand *cmd = (struct BackgroundCommand *)base;
-  if (fork_or_panic() == 0) cmd->cmd->execute(cmd->cmd);
+  if (fork_or_panic() == 0) cmd->cmd->execute(cmd->cmd);  // child
   exit(0);
 }
 
@@ -353,15 +354,17 @@ struct Command *Parser_parse_redirects(struct Command *cmd, char **ptr_string,
       panic("missing file for redirection");
     switch (token_kind) {
       case '<':
-        cmd = RedirectCommand_new(cmd, token, token_end, O_RDONLY, 0);
+        cmd =
+            RedirectCommand_new(cmd, token, token_end, O_RDONLY, 0 /* stdin */);
         break;
       case '>':
-        cmd = RedirectCommand_new(cmd, token, token_end,
-                                  O_WRONLY | O_CREATE | O_TRUNC, 1);
+        cmd =
+            RedirectCommand_new(cmd, token, token_end,
+                                O_WRONLY | O_CREATE | O_TRUNC, 1 /* stdout */);
         break;
       case '+':  // >>
-        cmd =
-            RedirectCommand_new(cmd, token, token_end, O_WRONLY | O_CREATE, 1);
+        cmd = RedirectCommand_new(cmd, token, token_end, O_WRONLY | O_CREATE,
+                                  1 /* stdout */);
         break;
     }
   }
