@@ -71,7 +71,7 @@ void kvminithart() {
 //   12..20 -- 9 bits of level-0 index.
 //    0..11 -- 12 bits of byte offset within the page.
 pte_t *walk(pagetable_t pagetable, uint64 virtual_address, bool alloc) {
-  if (virtual_address >= MAXVA) panic("walk");
+  if (virtual_address >= MAX_VIRTUAL_ADDRESS) panic("walk");
 
   for (int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, virtual_address)];
@@ -90,16 +90,13 @@ pte_t *walk(pagetable_t pagetable, uint64 virtual_address, bool alloc) {
 // or 0 if not mapped.
 // Can only be used to look up user pages.
 uint64 walkaddr(pagetable_t pagetable, uint64 va) {
-  pte_t *pte;
-  uint64 pa;
+  if (va >= MAX_VIRTUAL_ADDRESS) return 0;
 
-  if (va >= MAXVA) return 0;
-
-  pte = walk(pagetable, va, false /* alloc */);
+  pte_t *pte = walk(pagetable, va, false /* alloc */);
   if (pte == 0) return 0;
   if ((*pte & PTE_V) == 0) return 0;
   if ((*pte & PTE_U) == 0) return 0;
-  pa = PTE2PA(*pte);
+  uint64 pa = PTE2PA(*pte);
   return pa;
 }
 
