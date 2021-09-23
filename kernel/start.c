@@ -5,7 +5,7 @@
 #include "types.h"
 
 void main();
-void timerinit();
+void init_timer();
 
 // entry.S needs one stack per CPU.
 __attribute__((aligned(16))) char stack0[4096 * CPU_MAX_NUM];
@@ -37,7 +37,7 @@ void start() {
   write_sie(read_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE);
 
   // ask for clock interrupts.
-  timerinit();
+  init_timer();
 
   // keep each CPU's hartid in its tp register, for cpuid().
   int id = read_mhartid();
@@ -51,7 +51,7 @@ void start() {
 // which arrive at timervec in kernelvec.S,
 // which turns them into software interrupts for
 // devintr() in trap.c.
-void timerinit() {
+void init_timer() {
   // each CPU has a separate source of timer interrupts.
   int id = read_mhartid();
 
