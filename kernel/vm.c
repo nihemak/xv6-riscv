@@ -54,7 +54,7 @@ void kvminit(void) { kernel_pagetable = kvmmake(); }
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
 void kvminithart() {
-  w_satp(MAKE_SATP(kernel_pagetable));
+  write_satp(MAKE_SATP(kernel_pagetable));
   sfence_vma();
 }
 

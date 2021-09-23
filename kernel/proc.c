@@ -9,7 +9,7 @@
 #include "spinlock.h"
 #include "types.h"
 
-struct cpu cpus[NCPU];
+struct cpu cpus[CPU_MAX_NUM];
 
 struct proc proc[NPROC];
 
@@ -55,7 +55,7 @@ void procinit(void) {
 // to prevent race with process being moved
 // to a different CPU.
 int cpuid() {
-  int id = r_tp();
+  int id = read_tp();
   return id;
 }
 
