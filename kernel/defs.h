@@ -160,9 +160,9 @@ void uartputc_sync(int);
 int uartgetc(void);
 
 // vm.c
-void kvminit(void);
-void kvminithart(void);
-void kvmmap(pagetable_t, uint64, uint64, uint64, int);
+void KernelVirtualMemory_init(void);
+void KernelVirtualMemory_init_hart(void);
+void KernelVirtualMemory_map(pagetable_t, uint64, uint64, uint64, int);
 bool mappages(pagetable_t, uint64, uint64, uint64, int);
 pagetable_t uvmcreate(void);
 void uvminit(pagetable_t, uchar*, uint);

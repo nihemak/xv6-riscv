@@ -43,7 +43,7 @@ int exec(char *path, char **argv) {
     uint64 sz1;
     if ((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0) goto bad;
     sz = sz1;
-    if (ph.vaddr % PGSIZE != 0) goto bad;
+    if (ph.vaddr % PAGE_SIZE != 0) goto bad;
     if (loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0) goto bad;
   }
   iunlockput(ip);
@@ -55,13 +55,13 @@ int exec(char *path, char **argv) {
 
   // Allocate two pages at the next page boundary.
   // Use the second as the user stack.
-  sz = PGROUNDUP(sz);
+  sz = PAGE_ROUND_UP(sz);
   uint64 sz1;
-  if ((sz1 = uvmalloc(pagetable, sz, sz + 2 * PGSIZE)) == 0) goto bad;
+  if ((sz1 = uvmalloc(pagetable, sz, sz + 2 * PAGE_SIZE)) == 0) goto bad;
   sz = sz1;
-  uvmclear(pagetable, sz - 2 * PGSIZE);
+  uvmclear(pagetable, sz - 2 * PAGE_SIZE);
   sp = sz;
-  stackbase = sp - PGSIZE;
+  stackbase = sp - PAGE_SIZE;
 
   // Push argument strings, prepare rest of stack in ustack.
   for (argc = 0; argv[argc]; argc++) {
@@ -120,15 +120,15 @@ static int loadseg(pagetable_t pagetable, uint64 va, struct inode *ip,
   uint i, n;
   uint64 pa;
 
-  if ((va % PGSIZE) != 0) panic("loadseg: va must be page aligned");
+  if ((va % PAGE_SIZE) != 0) panic("loadseg: va must be page aligned");
 
-  for (i = 0; i < sz; i += PGSIZE) {
+  for (i = 0; i < sz; i += PAGE_SIZE) {
     pa = walkaddr(pagetable, va + i);
     if (pa == 0) panic("loadseg: address should exist");
-    if (sz - i < PGSIZE)
+    if (sz - i < PAGE_SIZE)
       n = sz - i;
     else
-      n = PGSIZE;
+      n = PAGE_SIZE;
     if (readi(ip, 0, (uint64)pa, offset + i, n) != n) return -1;
   }
 

@@ -34,25 +34,25 @@ void init(void) {
       "\n"
       "xv6 kernel is booting\n"
       "\n");
-  kinit();             // physical page allocator
-  kvminit();           // create kernel page table
-  kvminithart();       // turn on paging
-  procinit();          // process table
-  trapinit();          // trap vectors
-  trapinithart();      // install kernel trap vector
-  plicinit();          // set up interrupt controller
-  plicinithart();      // ask PLIC for device interrupts
-  binit();             // buffer cache
-  iinit();             // inode cache
-  fileinit();          // file table
-  virtio_disk_init();  // emulated hard disk
-  userinit();          // first user process
+  kinit();                          // physical page allocator
+  KernelVirtualMemory_init();       // create kernel page table
+  KernelVirtualMemory_init_hart();  // turn on paging
+  procinit();                       // process table
+  trapinit();                       // trap vectors
+  trapinithart();                   // install kernel trap vector
+  plicinit();                       // set up interrupt controller
+  plicinithart();                   // ask PLIC for device interrupts
+  binit();                          // buffer cache
+  iinit();                          // inode cache
+  fileinit();                       // file table
+  virtio_disk_init();               // emulated hard disk
+  userinit();                       // first user process
 }
 
 // Hart: HARdware Thread
 void start_hart(int cpu_id) {
   printf("hart %d starting\n", cpu_id);
-  kvminithart();   // turn on paging
-  trapinithart();  // install kernel trap vector
-  plicinithart();  // ask PLIC for device interrupts
+  KernelVirtualMemory_init_hart();  // turn on paging
+  trapinithart();                   // install kernel trap vector
+  plicinithart();                   // ask PLIC for device interrupts
 }

@@ -37,7 +37,9 @@ void proc_mapstacks(pagetable_t kpgtbl) {
     char *pa = kalloc();
     if (pa == 0) panic("kalloc");
     uint64 va = KSTACK((int)(p - proc));
-    kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+    KernelVirtualMemory_map(
+        kpgtbl, va, (uint64)pa, PAGE_SIZE,
+        PAGE_TABLE_ENTRY_FLAGS_READABLE | PAGE_TABLE_ENTRY_FLAGS_WRITABLE);
   }
 }
 
@@ -124,7 +126,7 @@ found:
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
-  p->context.sp = p->kstack + PGSIZE;
+  p->context.sp = p->kstack + PAGE_SIZE;
 
   return p;
 }
@@ -158,15 +160,17 @@ pagetable_t proc_pagetable(struct proc *p) {
   // at the highest user virtual address.
   // only the supervisor uses it, on the way
   // to/from user space, so not PTE_U.
-  if (!mappages(pagetable, TRAMPOLINE, PGSIZE, (uint64)trampoline,
-                PTE_R | PTE_X)) {
+  if (!mappages(pagetable, TRAMPOLINE, PAGE_SIZE, (uint64)trampoline,
+                PAGE_TABLE_ENTRY_FLAGS_READABLE |
+                    PAGE_TABLE_ENTRY_FLAGS_EXECUTABLE)) {
     uvmfree(pagetable, 0);
     return 0;
   }
 
   // map the trapframe just below TRAMPOLINE, for trampoline.S.
-  if (!mappages(pagetable, TRAPFRAME, PGSIZE, (uint64)(p->trapframe),
-                PTE_R | PTE_W)) {
+  if (!mappages(
+          pagetable, TRAPFRAME, PAGE_SIZE, (uint64)(p->trapframe),
+          PAGE_TABLE_ENTRY_FLAGS_READABLE | PAGE_TABLE_ENTRY_FLAGS_WRITABLE)) {
     uvmunmap(pagetable, TRAMPOLINE, 1, 0);
     uvmfree(pagetable, 0);
     return 0;
@@ -200,11 +204,11 @@ void userinit(void) {
   // allocate one user page and copy init's instructions
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
-  p->sz = PGSIZE;
+  p->sz = PAGE_SIZE;
 
   // prepare for the very first "return" from kernel to user.
-  p->trapframe->epc = 0;      // user program counter
-  p->trapframe->sp = PGSIZE;  // user stack pointer
+  p->trapframe->epc = 0;         // user program counter
+  p->trapframe->sp = PAGE_SIZE;  // user stack pointer
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");

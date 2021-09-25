@@ -18,29 +18,40 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 extern char trampoline[];  // trampoline.S
 
 // Make a direct-map page table for the kernel.
-pagetable_t kvmmake(void) {
+pagetable_t KernalVertualMemory_make(void) {
   pagetable_t kpgtbl = (pagetable_t)kalloc();
-  memset(kpgtbl, 0, PGSIZE);
+  memset(kpgtbl, 0, PAGE_SIZE);
 
   // uart registers
-  kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+  KernelVirtualMemory_map(
+      kpgtbl, UART0, UART0, PAGE_SIZE,
+      PAGE_TABLE_ENTRY_FLAGS_READABLE | PAGE_TABLE_ENTRY_FLAGS_WRITABLE);
 
   // virtio mmio disk interface
-  kvmmap(kpgtbl, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+  KernelVirtualMemory_map(
+      kpgtbl, VIRTIO0, VIRTIO0, PAGE_SIZE,
+      PAGE_TABLE_ENTRY_FLAGS_READABLE | PAGE_TABLE_ENTRY_FLAGS_WRITABLE);
 
   // PLIC
-  kvmmap(kpgtbl, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+  KernelVirtualMemory_map(
+      kpgtbl, PLIC, PLIC, 0x400000,
+      PAGE_TABLE_ENTRY_FLAGS_READABLE | PAGE_TABLE_ENTRY_FLAGS_WRITABLE);
 
   // map kernel text executable and read-only.
-  kvmmap(kpgtbl, KERNBASE, KERNBASE, (uint64)etext - KERNBASE, PTE_R | PTE_X);
+  KernelVirtualMemory_map(
+      kpgtbl, KERNBASE, KERNBASE, (uint64)etext - KERNBASE,
+      PAGE_TABLE_ENTRY_FLAGS_READABLE | PAGE_TABLE_ENTRY_FLAGS_EXECUTABLE);
 
   // map kernel data and the physical RAM we'll make use of.
-  kvmmap(kpgtbl, (uint64)etext, (uint64)etext, PHYSTOP - (uint64)etext,
-         PTE_R | PTE_W);
+  KernelVirtualMemory_map(
+      kpgtbl, (uint64)etext, (uint64)etext, PHYSTOP - (uint64)etext,
+      PAGE_TABLE_ENTRY_FLAGS_READABLE | PAGE_TABLE_ENTRY_FLAGS_WRITABLE);
 
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
-  kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+  KernelVirtualMemory_map(
+      kpgtbl, TRAMPOLINE, (uint64)trampoline, PAGE_SIZE,
+      PAGE_TABLE_ENTRY_FLAGS_READABLE | PAGE_TABLE_ENTRY_FLAGS_EXECUTABLE);
 
   // map kernel stacks
   proc_mapstacks(kpgtbl);
@@ -49,11 +60,13 @@ pagetable_t kvmmake(void) {
 }
 
 // Initialize the one kernel_pagetable
-void kvminit(void) { kernel_pagetable = kvmmake(); }
+void KernelVirtualMemory_init(void) {
+  kernel_pagetable = KernalVertualMemory_make();
+}
 
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
-void kvminithart() {
+void KernelVirtualMemory_init_hart() {
   write_satp(MAKE_SATP(kernel_pagetable));
   sfence_vma();
 }
@@ -74,16 +87,17 @@ pte_t *walk(pagetable_t pagetable, uint64 virtual_address, bool alloc) {
   if (virtual_address >= MAX_VIRTUAL_ADDRESS) panic("walk");
 
   for (int level = 2; level > 0; level--) {
-    pte_t *pte = &pagetable[PX(level, virtual_address)];
-    if (*pte & PTE_V) {
-      pagetable = (pagetable_t)PTE2PA(*pte);
+    pte_t *pte = &pagetable[PAGE_TABLE_INDEX(level, virtual_address)];
+    if (*pte & PAGE_TABLE_ENTRY_FLAGS_VALID) {
+      pagetable = (pagetable_t)PAGE_TABLE_ENTRY_TO_PHYSICAL_ADDRESS(*pte);
     } else {
       if (!alloc || (pagetable = (pde_t *)kalloc()) == 0) return 0;
-      memset(pagetable, 0, PGSIZE);
-      *pte = PA2PTE(pagetable) | PTE_V;
+      memset(pagetable, 0, PAGE_SIZE);
+      *pte = PHYSICAL_ADDRESS_TO_PAGE_TABLE_ENTRY(pagetable) |
+             PAGE_TABLE_ENTRY_FLAGS_VALID;
     }
   }
-  return &pagetable[PX(0, virtual_address)];
+  return &pagetable[PAGE_TABLE_INDEX(0, virtual_address)];
 }
 
 // Look up a virtual address, return the physical address,
@@ -91,22 +105,21 @@ pte_t *walk(pagetable_t pagetable, uint64 virtual_address, bool alloc) {
 // Can only be used to look up user pages.
 uint64 walkaddr(pagetable_t pagetable, uint64 va) {
   if (va >= MAX_VIRTUAL_ADDRESS) return 0;
-
   pte_t *pte = walk(pagetable, va, false /* alloc */);
   if (pte == 0) return 0;
-  if ((*pte & PTE_V) == 0) return 0;
-  if ((*pte & PTE_U) == 0) return 0;
-  uint64 pa = PTE2PA(*pte);
+  if ((*pte & PAGE_TABLE_ENTRY_FLAGS_VALID) == 0) return 0;
+  if ((*pte & PAGE_TABLE_ENTRY_FLAGS_USER) == 0) return 0;
+  uint64 pa = PAGE_TABLE_ENTRY_TO_PHYSICAL_ADDRESS(*pte);
   return pa;
 }
 
 // add a mapping to the kernel page table.
 // only used when booting.
 // does not flush TLB or enable paging.
-void kvmmap(pagetable_t kpgtbl, uint64 virtual_address, uint64 physical_address,
-            uint64 size, int perm) {
+void KernelVirtualMemory_map(pagetable_t kpgtbl, uint64 virtual_address,
+                             uint64 physical_address, uint64 size, int perm) {
   if (!mappages(kpgtbl, virtual_address, size, physical_address, perm))
-    panic("kvmmap");
+    panic("KernelVirtualMemmory_map");
 }
 
 // Create PTEs for virtual addresses starting at va that refer to
@@ -115,18 +128,19 @@ void kvmmap(pagetable_t kpgtbl, uint64 virtual_address, uint64 physical_address,
 // allocate a needed page-table page.
 bool mappages(pagetable_t pagetable, uint64 virtual_address, uint64 size,
               uint64 physical_address, int perm) {
-  uint64 va = PGROUNDDOWN(virtual_address);
-  uint64 va_last = PGROUNDDOWN(virtual_address + size - 1);
+  uint64 va = PAGE_ROUND_DOWN(virtual_address);
+  uint64 va_last = PAGE_ROUND_DOWN(virtual_address + size - 1);
   uint64 pa = physical_address;
 
   for (;;) {
     pte_t *pte = walk(pagetable, va, true /* alloc */);
     if (pte == 0) return false;
-    if (*pte & PTE_V) panic("remap");
-    *pte = PA2PTE(pa) | perm | PTE_V;
+    if (*pte & PAGE_TABLE_ENTRY_FLAGS_VALID) panic("remap");
+    *pte = PHYSICAL_ADDRESS_TO_PAGE_TABLE_ENTRY(pa) | perm |
+           PAGE_TABLE_ENTRY_FLAGS_VALID;
     if (va == va_last) break;
-    va += PGSIZE;
-    pa += PGSIZE;
+    va += PAGE_SIZE;
+    pa += PAGE_SIZE;
   }
   return true;
 }
@@ -135,15 +149,17 @@ bool mappages(pagetable_t pagetable, uint64 virtual_address, uint64 size,
 // page-aligned. The mappings must exist.
 // Optionally free the physical memory.
 void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
-  if ((va % PGSIZE) != 0) panic("uvmunmap: not aligned");
+  if ((va % PAGE_SIZE) != 0) panic("uvmunmap: not aligned");
 
-  for (uint64 a = va; a < va + npages * PGSIZE; a += PGSIZE) {
+  for (uint64 a = va; a < va + npages * PAGE_SIZE; a += PAGE_SIZE) {
     pte_t *pte = walk(pagetable, a, false /* alloc */);
     if (pte == 0) panic("uvmunmap: walk");
-    if ((*pte & PTE_V) == 0) panic("uvmunmap: not mapped");
-    if (PTE_FLAGS(*pte) == PTE_V) panic("uvmunmap: not a leaf");
+    if ((*pte & PAGE_TABLE_ENTRY_FLAGS_VALID) == 0)
+      panic("uvmunmap: not mapped");
+    if (PAGE_TABLE_ENTRY_FLAGS(*pte) == PAGE_TABLE_ENTRY_FLAGS_VALID)
+      panic("uvmunmap: not a leaf");
     if (do_free) {
-      uint64 pa = PTE2PA(*pte);
+      uint64 pa = PAGE_TABLE_ENTRY_TO_PHYSICAL_ADDRESS(*pte);
       kfree((void *)pa);
     }
     *pte = 0;
@@ -155,7 +171,7 @@ void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free) {
 pagetable_t uvmcreate() {
   pagetable_t pagetable = (pagetable_t)kalloc();
   if (pagetable == 0) return 0;
-  memset(pagetable, 0, PGSIZE);
+  memset(pagetable, 0, PAGE_SIZE);
   return pagetable;
 }
 
@@ -163,12 +179,12 @@ pagetable_t uvmcreate() {
 // for the very first process.
 // sz must be less than a page.
 void uvminit(pagetable_t pagetable, uchar *src, uint sz) {
-  char *mem;
-
-  if (sz >= PGSIZE) panic("inituvm: more than a page");
-  mem = kalloc();
-  memset(mem, 0, PGSIZE);
-  mappages(pagetable, 0, PGSIZE, (uint64)mem, PTE_W | PTE_R | PTE_X | PTE_U);
+  if (sz >= PAGE_SIZE) panic("inituvm: more than a page");
+  char *mem = kalloc();
+  memset(mem, 0, PAGE_SIZE);
+  mappages(pagetable, 0, PAGE_SIZE, (uint64)mem,
+           PAGE_TABLE_ENTRY_FLAGS_WRITABLE | PAGE_TABLE_ENTRY_FLAGS_READABLE |
+               PAGE_TABLE_ENTRY_FLAGS_EXECUTABLE | PAGE_TABLE_ENTRY_FLAGS_USER);
   memmove(mem, src, sz);
 }
 
@@ -177,16 +193,19 @@ void uvminit(pagetable_t pagetable, uchar *src, uint sz) {
 uint64 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
   if (newsz < oldsz) return oldsz;
 
-  oldsz = PGROUNDUP(oldsz);
-  for (uint64 a = oldsz; a < newsz; a += PGSIZE) {
+  oldsz = PAGE_ROUND_UP(oldsz);
+  for (uint64 a = oldsz; a < newsz; a += PAGE_SIZE) {
     char *mem = kalloc();
     if (mem == 0) {
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
-    memset(mem, 0, PGSIZE);
-    if (!mappages(pagetable, a, PGSIZE, (uint64)mem,
-                  PTE_W | PTE_X | PTE_R | PTE_U)) {
+    memset(mem, 0, PAGE_SIZE);
+    if (!mappages(pagetable, a, PAGE_SIZE, (uint64)mem,
+                  PAGE_TABLE_ENTRY_FLAGS_WRITABLE |
+                      PAGE_TABLE_ENTRY_FLAGS_EXECUTABLE |
+                      PAGE_TABLE_ENTRY_FLAGS_READABLE |
+                      PAGE_TABLE_ENTRY_FLAGS_USER)) {
       kfree(mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
@@ -202,9 +221,9 @@ uint64 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
 uint64 uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
   if (newsz >= oldsz) return oldsz;
 
-  if (PGROUNDUP(newsz) < PGROUNDUP(oldsz)) {
-    int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PGSIZE;
-    uvmunmap(pagetable, PGROUNDUP(newsz), npages, 1);
+  if (PAGE_ROUND_UP(newsz) < PAGE_ROUND_UP(oldsz)) {
+    int npages = (PAGE_ROUND_UP(oldsz) - PAGE_ROUND_UP(newsz)) / PAGE_SIZE;
+    uvmunmap(pagetable, PAGE_ROUND_UP(newsz), npages, 1);
   }
 
   return newsz;
@@ -216,12 +235,15 @@ void freewalk(pagetable_t pagetable) {
   // there are 2^9 = 512 PTEs in a page table.
   for (int i = 0; i < 512; i++) {
     pte_t pte = pagetable[i];
-    if ((pte & PTE_V) && (pte & (PTE_R | PTE_W | PTE_X)) == 0) {
+    if ((pte & PAGE_TABLE_ENTRY_FLAGS_VALID) &&
+        (pte &
+         (PAGE_TABLE_ENTRY_FLAGS_READABLE | PAGE_TABLE_ENTRY_FLAGS_WRITABLE |
+          PAGE_TABLE_ENTRY_FLAGS_EXECUTABLE)) == 0) {
       // this PTE points to a lower-level page table.
-      uint64 child = PTE2PA(pte);
+      uint64 child = PAGE_TABLE_ENTRY_TO_PHYSICAL_ADDRESS(pte);
       freewalk((pagetable_t)child);
       pagetable[i] = 0;
-    } else if (pte & PTE_V) {
+    } else if (pte & PAGE_TABLE_ENTRY_FLAGS_VALID) {
       panic("freewalk: leaf");
     }
   }
@@ -231,7 +253,7 @@ void freewalk(pagetable_t pagetable) {
 // Free user memory pages,
 // then free page-table pages.
 void uvmfree(pagetable_t pagetable, uint64 sz) {
-  if (sz > 0) uvmunmap(pagetable, 0, PGROUNDUP(sz) / PGSIZE, 1);
+  if (sz > 0) uvmunmap(pagetable, 0, PAGE_ROUND_UP(sz) / PAGE_SIZE, 1);
   freewalk(pagetable);
 }
 
@@ -244,18 +266,19 @@ void uvmfree(pagetable_t pagetable, uint64 sz) {
 int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
   uint64 i;
 
-  for (i = 0; i < sz; i += PGSIZE) {
+  for (i = 0; i < sz; i += PAGE_SIZE) {
     pte_t *pte = walk(old, i, false /* alloc */);
     uint64 pa;
     uint flags;
     char *mem;
     if (pte == 0) panic("uvmcopy: pte should exist");
-    if ((*pte & PTE_V) == 0) panic("uvmcopy: page not present");
-    pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
+    if ((*pte & PAGE_TABLE_ENTRY_FLAGS_VALID) == 0)
+      panic("uvmcopy: page not present");
+    pa = PAGE_TABLE_ENTRY_TO_PHYSICAL_ADDRESS(*pte);
+    flags = PAGE_TABLE_ENTRY_FLAGS(*pte);
     if ((mem = kalloc()) == 0) goto err;
-    memmove(mem, (char *)pa, PGSIZE);
-    if (!mappages(new, i, PGSIZE, (uint64)mem, flags)) {
+    memmove(mem, (char *)pa, PAGE_SIZE);
+    if (!mappages(new, i, PAGE_SIZE, (uint64)mem, flags)) {
       kfree(mem);
       goto err;
     }
@@ -263,7 +286,7 @@ int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
   return 0;
 
 err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
+  uvmunmap(new, 0, i / PAGE_SIZE, 1);
   return -1;
 }
 
@@ -272,7 +295,7 @@ err:
 void uvmclear(pagetable_t pagetable, uint64 va) {
   pte_t *pte = walk(pagetable, va, false /* alloc */);
   if (pte == 0) panic("uvmclear");
-  *pte &= ~PTE_U;
+  *pte &= ~PAGE_TABLE_ENTRY_FLAGS_USER;
 }
 
 // Copy from kernel to user.
@@ -281,16 +304,16 @@ void uvmclear(pagetable_t pagetable, uint64 va) {
 int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
   while (len > 0) {
     uint64 n;
-    uint64 va0 = PGROUNDDOWN(dstva);
+    uint64 va0 = PAGE_ROUND_DOWN(dstva);
     uint64 pa0 = walkaddr(pagetable, va0);
     if (pa0 == 0) return -1;
-    n = PGSIZE - (dstva - va0);
+    n = PAGE_SIZE - (dstva - va0);
     if (n > len) n = len;
     memmove((void *)(pa0 + (dstva - va0)), src, n);
 
     len -= n;
     src += n;
-    dstva = va0 + PGSIZE;
+    dstva = va0 + PAGE_SIZE;
   }
   return 0;
 }
@@ -301,16 +324,16 @@ int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
 int copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len) {
   while (len > 0) {
     uint64 n;
-    uint64 va0 = PGROUNDDOWN(srcva);
+    uint64 va0 = PAGE_ROUND_DOWN(srcva);
     uint64 pa0 = walkaddr(pagetable, va0);
     if (pa0 == 0) return -1;
-    n = PGSIZE - (srcva - va0);
+    n = PAGE_SIZE - (srcva - va0);
     if (n > len) n = len;
     memmove(dst, (void *)(pa0 + (srcva - va0)), n);
 
     len -= n;
     dst += n;
-    srcva = va0 + PGSIZE;
+    srcva = va0 + PAGE_SIZE;
   }
   return 0;
 }
@@ -323,10 +346,10 @@ int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max) {
   bool got_null = false;
   while (!got_null && max > 0) {
     uint64 n;
-    uint64 va0 = PGROUNDDOWN(srcva);
+    uint64 va0 = PAGE_ROUND_DOWN(srcva);
     uint64 pa0 = walkaddr(pagetable, va0);
     if (pa0 == 0) return -1;
-    n = PGSIZE - (srcva - va0);
+    n = PAGE_SIZE - (srcva - va0);
     if (n > max) n = max;
 
     char *p = (char *)(pa0 + (srcva - va0));
@@ -344,7 +367,7 @@ int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max) {
       dst++;
     }
 
-    srcva = va0 + PGSIZE;
+    srcva = va0 + PAGE_SIZE;
   }
   return got_null ? 0 : -1;
 }

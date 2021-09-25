@@ -26,7 +26,7 @@ static struct disk {
   // structures in RAM. pages[] allocates that memory. pages[] is a
   // global (instead of calls to kalloc()) because it must consist of
   // two contiguous pages of page-aligned physical memory.
-  char pages[2 * PGSIZE];
+  char pages[2 * PAGE_SIZE];
 
   // pages[] is divided into three regions (descriptors, avail, and
   // used), as explained in Section 2.6 of the virtio specification
@@ -72,7 +72,7 @@ static struct disk {
 
   struct spinlock vdisk_lock;
 
-} __attribute__((aligned(PGSIZE))) disk;
+} __attribute__((aligned(PAGE_SIZE))) disk;
 
 void virtio_disk_init(void) {
   uint32 status = 0;
@@ -110,7 +110,7 @@ void virtio_disk_init(void) {
   status |= VIRTIO_CONFIG_S_DRIVER_OK;
   *R(VIRTIO_MMIO_STATUS) = status;
 
-  *R(VIRTIO_MMIO_GUEST_PAGE_SIZE) = PGSIZE;
+  *R(VIRTIO_MMIO_GUEST_PAGE_SIZE) = PAGE_SIZE;
 
   // initialize queue 0.
   *R(VIRTIO_MMIO_QUEUE_SEL) = 0;
@@ -119,7 +119,7 @@ void virtio_disk_init(void) {
   if (max < NUM) panic("virtio disk max queue too short");
   *R(VIRTIO_MMIO_QUEUE_NUM) = NUM;
   memset(disk.pages, 0, sizeof(disk.pages));
-  *R(VIRTIO_MMIO_QUEUE_PFN) = ((uint64)disk.pages) >> PGSHIFT;
+  *R(VIRTIO_MMIO_QUEUE_PFN) = ((uint64)disk.pages) >> PAGE_SHIFT;
 
   // desc = pages -- num * virtq_desc
   // avail = pages + 0x40 -- 2 * uint16, then num * uint16
@@ -128,7 +128,7 @@ void virtio_disk_init(void) {
   disk.desc = (struct virtq_desc *)disk.pages;
   disk.avail =
       (struct virtq_avail *)(disk.pages + NUM * sizeof(struct virtq_desc));
-  disk.used = (struct virtq_used *)(disk.pages + PGSIZE);
+  disk.used = (struct virtq_used *)(disk.pages + PAGE_SIZE);
 
   // all NUM descriptors start out unused.
   for (int i = 0; i < NUM; i++) disk.free[i] = 1;
