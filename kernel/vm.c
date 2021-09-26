@@ -115,7 +115,7 @@ PageTableEntry *walk(PageTable page_table, uint64 virtual_address, bool alloc) {
       continue;
     }
     if (!alloc) return 0;
-    page_table = (pde_t *)kalloc();
+    page_table = (PageTable)kalloc();
     if (page_table == 0) return 0;
     memset(page_table, 0, PAGE_SIZE);
     *page_table_entry = PHYSICAL_ADDRESS_TO_PAGE_TABLE_ENTRY(page_table) |
