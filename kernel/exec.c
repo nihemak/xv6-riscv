@@ -17,7 +17,7 @@ int exec(char *path, char **argv) {
   struct elfhdr elf;
   struct inode *ip;
   struct proghdr ph;
-  pagetable_t pagetable = 0, oldpagetable;
+  PageTable pagetable = 0, oldpagetable;
   struct proc *p = myproc();
 
   begin_op();
@@ -115,7 +115,7 @@ bad:
 // va must be page-aligned
 // and the pages from va to va+sz must already be mapped.
 // Returns 0 on success, -1 on failure.
-static int loadseg(pagetable_t pagetable, uint64 va, struct inode *ip,
+static int loadseg(PageTable pagetable, uint64 va, struct inode *ip,
                    uint offset, uint sz) {
   uint i, n;
   uint64 pa;

@@ -60,10 +60,8 @@ void kfree(void *pa) {
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
 void *kalloc(void) {
-  struct run *r;
-
   acquire(&kmem.lock);
-  r = kmem.freelist;
+  struct run *r = kmem.freelist;
   if (r) kmem.freelist = r->next;
   release(&kmem.lock);
 

@@ -32,7 +32,7 @@ struct spinlock wait_lock;
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
 // guard page.
-void proc_mapstacks(pagetable_t kpgtbl) {
+void proc_mapstacks(PageTable kpgtbl) {
   for (struct proc *p = proc; p < &proc[NPROC]; p++) {
     char *pa = kalloc();
     if (pa == 0) panic("kalloc");
@@ -151,8 +151,8 @@ static void freeproc(struct proc *p) {
 
 // Create a user page table for a given process,
 // with no user memory, but with trampoline pages.
-pagetable_t proc_pagetable(struct proc *p) {
-  pagetable_t pagetable = uvmcreate();
+PageTable proc_pagetable(struct proc *p) {
+  PageTable pagetable = uvmcreate();
   // An empty page table.
   if (pagetable == 0) return 0;
 
@@ -160,15 +160,15 @@ pagetable_t proc_pagetable(struct proc *p) {
   // at the highest user virtual address.
   // only the supervisor uses it, on the way
   // to/from user space, so not PTE_U.
-  if (!mappages(pagetable, TRAMPOLINE, PAGE_SIZE, (uint64)trampoline,
-                PAGE_TABLE_ENTRY_FLAGS_READABLE |
-                    PAGE_TABLE_ENTRY_FLAGS_EXECUTABLE)) {
+  if (!map_pages(pagetable, TRAMPOLINE, PAGE_SIZE, (uint64)trampoline,
+                 PAGE_TABLE_ENTRY_FLAGS_READABLE |
+                     PAGE_TABLE_ENTRY_FLAGS_EXECUTABLE)) {
     uvmfree(pagetable, 0);
     return 0;
   }
 
   // map the trapframe just below TRAMPOLINE, for trampoline.S.
-  if (!mappages(
+  if (!map_pages(
           pagetable, TRAPFRAME, PAGE_SIZE, (uint64)(p->trapframe),
           PAGE_TABLE_ENTRY_FLAGS_READABLE | PAGE_TABLE_ENTRY_FLAGS_WRITABLE)) {
     uvmunmap(pagetable, TRAMPOLINE, 1, 0);
@@ -181,7 +181,7 @@ pagetable_t proc_pagetable(struct proc *p) {
 
 // Free a process's page table, and free the
 // physical memory it refers to.
-void proc_freepagetable(pagetable_t pagetable, uint64 sz) {
+void proc_freepagetable(PageTable pagetable, uint64 sz) {
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
   uvmfree(pagetable, sz);
